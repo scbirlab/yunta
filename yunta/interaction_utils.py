@@ -107,7 +107,7 @@ def _create_data_json(
     interaction_map["name"].update(additional)
             
     interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
-    with gzip.open(json_path, "w") as f:
+    with gzip.open(json_path, 'wt', encoding='UTF-8') as f:
         json.dump(interaction_map, f, sort_keys=True, indent=4)
     return None
 

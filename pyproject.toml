@@ -30,7 +30,7 @@ dependencies = [
   "absl-py",
   "bioino",
   "biopython",
-  "carabiner-tools[mpl,pd]",
+  "carabiner-tools[mpl,pd]>=0.0.4",
   "dm-haiku==0.0.12",
   "dm-tree",
   "jax<=0.4.35",
@@ -42,7 +42,7 @@ dependencies = [
   "tensorrt",
   "torch>=2.3",
   "torchvision",
-  "tqdm"
+  "tqdm",
 ]
 
 [project.optional-dependencies]

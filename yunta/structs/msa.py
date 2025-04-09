@@ -302,7 +302,7 @@ class PairedMSA(MSA):
     def join_msa(
         msa1: MSA, 
         msa2: Optional[MSA] = None, 
-        blocked: bool = True,
+        blocked: bool = False,
         interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
         strict_species_match: bool = False
     ) -> Tuple[List[PairedMSALine], int]:
