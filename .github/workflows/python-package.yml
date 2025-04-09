@@ -12,12 +12,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
@@ -36,7 +36,7 @@ jobs:
       run: |
         pytest yunta --doctest-modules --junitxml=tests/test-results.xml --cov=com --cov-report=xml --cov-report=html
     - name: Upload pytest test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
           name: pytest-results-${{ matrix.python-version }}
           path: junit/test-results-${{ matrix.python-version }}.xml
