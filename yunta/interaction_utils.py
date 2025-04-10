@@ -112,14 +112,13 @@ def _create_data_json(
             for ncbi_key in ncbi_keys:
                 additional[ncbi_key] = interaction_map["name"][key]
     interaction_map["name"].update(additional)
-
+    interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
     if test_mode:
-        return {key: list(val) for key, val in interaction_map["name"].items()}
-    else:
-        interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
+        return interaction_map
     with gzip.open(json_path, mode='wt', encoding='UTF-8') as f:
         json.dump(interaction_map, f, sort_keys=not test_mode, indent=4)
     return None
+
 
 def organism_interactions() -> Dict[str, List[str]]:
 
