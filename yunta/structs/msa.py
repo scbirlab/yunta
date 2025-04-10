@@ -329,7 +329,7 @@ class PairedMSA(MSA):
             raise ValueError(
                 f"""
                 If provided, interaction_map must be a `dict` or `Mapping`,
-                but was `{type(interaction_map)}`.
+                but was `{type(interaction_map)}`: {interaction_map}.
                 """
             )
 

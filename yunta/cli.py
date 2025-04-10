@@ -63,7 +63,7 @@ def _rf2t_single(args: Namespace) -> None:
         msa_file1=msa1,
         msa_file2=msa2,
         cpu=args.cpu,
-        interaction_map="bultin" if args.interspecies else None,
+        interaction_map="builtin" if args.interspecies else None,
     )
     metrics = [_output[-1] for _output in outputs]
     write_metrics(metrics, 

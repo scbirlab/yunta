@@ -362,6 +362,8 @@ def model_one_vs_many(
     msa_file1: Union[str, TextIOWrapper],
     output_dir: str,
     msa_file2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
     pdockq_t: float = .5,
     force_save: bool = False,
     seed: Optional[int] = None,
@@ -392,6 +394,7 @@ def model_one_vs_many(
                 force_save=force_save,
                 seed=seed,
                 model_runner=model_runner,
+                max_gap_fraction=max_gap_fraction,
                 interaction_map=interaction_map,
             )
         )
@@ -399,14 +402,18 @@ def model_one_vs_many(
     return metrics
     
 
-def model_many_vs_many(msa_files1: Iterable[Union[str, TextIOWrapper]],
-                       output_dir: str,
-                       msa_files2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
-                       pdockq_t: float = .5,
-                       force_save: bool = True,
-                       seed: Optional[int] = None,
-                       model_runner: Optional = None,
-                       *args, **kwargs) -> List[ModelMetrics]:
+def model_many_vs_many(
+    msa_files1: Iterable[Union[str, TextIOWrapper]],
+    output_dir: str,
+    msa_files2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    pdockq_t: float = .5,
+    force_save: bool = True,
+    seed: Optional[int] = None,
+    model_runner: Optional = None,
+    *args, **kwargs
+) -> List[ModelMetrics]:
 
     model_runner = make_model_runner(*args, **kwargs)
     metrics = []
@@ -427,5 +434,7 @@ def model_many_vs_many(msa_files1: Iterable[Union[str, TextIOWrapper]],
                 pdockq_t=pdockq_t,
                 force_save=force_save,
                 seed=seed,
+                max_gap_fraction=max_gap_fraction,
+                interaction_map=interaction_map,
             )
     return metrics
