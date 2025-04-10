@@ -428,7 +428,6 @@ def model_many_vs_many(
         metrics += model_one_vs_many(
                 msa_file1=msa_file1,
                 msa_file2=msa_files2,
-                max_gap_fraction=max_gap_fraction,
                 model_runner=model_runner,
                 output_dir=output_dir,
                 pdockq_t=pdockq_t,
