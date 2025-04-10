@@ -137,6 +137,6 @@ def organism_interactions() -> Dict[str, List[str]]:
                 _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path, test_mode=test_mode)
             )
 
-        _INTERACTION_FILE_LOADED = True
+    _INTERACTION_FILE_LOADED = True
 
     return ORGANISM_INTERACTIONS
