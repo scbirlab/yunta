@@ -135,12 +135,14 @@ def organism_interactions() -> Dict[str, List[str]]:
             with gzip.open(_data_json_path, "rt", encoding='UTF-8') as f:
                 ORGANISM_INTERACTIONS.update(json.load(f))
         except gzip.BadGzipFile:  # GH Actions with git-lfs
+            test_mode = TEST_MODE == "1"
+            print_err("INFO: Running in test mode!")
             ORGANISM_INTERACTIONS.update(
                 _create_data_json(
                     _data_csv_path, 
                     _data_json_path, 
                     _name2ncbi_path, 
-                    test_mode=TEST_MODE == "1",
+                    test_mode=test_mode,
                 )
             )
         _INTERACTION_FILE_LOADED = True
