@@ -9,12 +9,12 @@ from carabiner import print_err
 
 from .weights import get_model_weights
 
-_params_path = os.path.join(os.path.dirname(__file__), "data")
-
-def make_model_runner(num_ensemble: int = 1,
-                      max_recycles: int = 10,
-                      param_dir: Optional[str] = None,
-                      model_name: Optional[str] = None):
+def make_model_runner(
+    num_ensemble: int = 1,
+    max_recycles: int = 10,
+    param_dir: Optional[str] = None,
+    model_name: Optional[str] = None
+):
     
     """Generate an AlphaFold2 model runner.
 

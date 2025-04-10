@@ -2,16 +2,13 @@
 
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 
-from copy import deepcopy
-from csv import writer
 from io import TextIOWrapper
 import os
 import random
 import sys
 from time import time
 
-from carabiner import print_err
-from carabiner.cast import cast
+from carabiner import cast, print_err
 import numpy as np
 from tqdm.auto import tqdm
 
@@ -23,14 +20,22 @@ from .src_speedppi.alphafold.data import foldonly
 from .structs.metrics import DCAMetrics, ModelMetrics, RF2TMetrics
 from .structs.msa import MSA, PairedMSA
 
-def _pair_msas(msa1: MSA, 
-               msa2: Optional[MSA] = None,
-               max_gap_fraction: float = 1.,
-               blocked: bool = False) -> Mapping[str, Union[int, float]]:
-    if msa2 is None:
-        msa2 = deepcopy(msa1)
-    print_err(msa1, msa2)
-    return PairedMSA.from_msa(msa1, msa2, blocked=blocked).filter_by_gap_fraction(max_gap_fraction)
+def _pair_msas(
+    msa1: MSA, 
+    msa2: Optional[MSA] = None,
+    max_gap_fraction: float = 1.,
+    blocked: bool = False,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None
+) -> Mapping[str, Union[int, float]]:
+    return (
+        PairedMSA.from_msa(
+            msa1, 
+            msa2, 
+            blocked=blocked, 
+            interaction_map=interaction_map,
+        )
+        .filter_by_gap_fraction(max_gap_fraction)
+    )
 
 
 def _get_af2_features(paired_msa: PairedMSA) -> Dict[str, Union[str, int]]:
@@ -51,12 +56,21 @@ def _get_af2_features(paired_msa: PairedMSA) -> Dict[str, Union[str, int]]:
     return feature_dict
 
 
-def rf2track(msa1: MSA, 
-             msa2: Optional[MSA] = None,
-             cpu: bool = True,
-             max_gap_fraction: float = .9,
-             model: Optional = None) -> Tuple[np.ndarray, np.ndarray, RF2TMetrics]:
-    paired_msa = _pair_msas(msa1, msa2, max_gap_fraction=max_gap_fraction, blocked=True)
+def rf2track(
+    msa1: MSA, 
+    msa2: Optional[MSA] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    cpu: bool = True,
+    model: Optional = None
+) -> Tuple[np.ndarray, np.ndarray, RF2TMetrics]:
+
+    paired_msa = _pair_msas(
+        msa1, 
+        msa2, 
+        max_gap_fraction=max_gap_fraction, 
+        interaction_map=interaction_map,
+    )
     print_err(paired_msa)
     chain_a_length = paired_msa.chain_a_length
     chain_b_length = paired_msa.seq_length - paired_msa.chain_a_length
@@ -68,8 +82,10 @@ def rf2track(msa1: MSA,
         torch.cuda.empty_cache()
         model = Predictor(use_cpu=cpu)
 
-    result, cα_coords = model.predict(np.asarray(paired_msa.sequence_token_ids), 
-                                      chain_a_length=paired_msa.chain_a_length)
+    result, cα_coords = model.predict(
+        np.asarray(paired_msa.sequence_token_ids), 
+        chain_a_length=paired_msa.chain_a_length,
+    )
 
     result_interaction = result[:chain_a_length, chain_a_length:]
     metrics = RF2TMetrics(
@@ -89,9 +105,13 @@ def rf2track(msa1: MSA,
     return result, result_interaction, metrics
 
 
-def rf2track_one_vs_many(msa_file1: Union[str, TextIOWrapper],
-                         msa_file2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
-                         cpu: bool = True) -> List[Tuple[np.ndarray, np.ndarray, RF2TMetrics]]:
+def rf2track_one_vs_many(
+    msa_file1: Union[str, TextIOWrapper],
+    msa_file2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    cpu: bool = True
+) -> List[Tuple[np.ndarray, np.ndarray, RF2TMetrics]]:
 
     if msa_file2 is None:
         msa_file2 = [None]
@@ -112,18 +132,28 @@ def rf2track_one_vs_many(msa_file1: Union[str, TextIOWrapper],
                 msa1=msa1,
                 msa2=msa2,
                 model=model,
+                max_gap_fraction=max_gap_fraction, 
+                interaction_map=interaction_map,
             )
         )
 
     return results
 
 
-def paired_dca(msa1: MSA, 
-               msa2: Optional[MSA] = None,
-               apc: bool = False,
-               max_gap_fraction: float = .9) -> Tuple[np.ndarray, np.ndarray, DCAMetrics]:
+def paired_dca(
+    msa1: MSA, 
+    msa2: Optional[MSA] = None,
+    apc: bool = False,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None
+) -> Tuple[np.ndarray, np.ndarray, DCAMetrics]:
 
-    paired_msa = _pair_msas(msa1, msa2, max_gap_fraction=max_gap_fraction)
+    paired_msa = _pair_msas(
+        msa1, 
+        msa2, 
+        max_gap_fraction=max_gap_fraction, 
+        interaction_map=interaction_map,
+    )
     print_err(paired_msa)
     neff = paired_msa.neff()
 
@@ -145,19 +175,23 @@ def paired_dca(msa1: MSA,
         maximum=np.max(result_interaction), 
         minimum=np.min(result_interaction), 
         mean=np.mean(result_interaction), 
-        median=np.median(result_interaction)
+        median=np.median(result_interaction),
     )
 
     return result, result_interaction, metrics
 
 
-def dca_one_vs_many(msa_file1: Union[str, TextIOWrapper],
-                    msa_file2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
-                    apc: bool = False) -> List[DCAMetrics]:
+def dca_one_vs_many(
+    msa_file1: Union[str, TextIOWrapper], 
+    msa_file2: Optional[Union[str, TextIOWrapper]] = None,
+    apc: bool = False,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None
+) -> List[DCAMetrics]:
 
     if msa_file2 is None:
         msa_file2 = [None]
-    if isinstance(msa_file2, str) or isinstance(msa_file2, TextIOWrapper):
+    if isinstance(msa_file2, (str, TextIOWrapper)):
         msa_file2 = [msa_file2]
     msa1 = MSA.from_file(msa_file1)
     results = []
@@ -170,15 +204,21 @@ def dca_one_vs_many(msa_file1: Union[str, TextIOWrapper],
                 msa1=msa1,
                 msa2=msa2,
                 apc=apc,
+                max_gap_fraction=max_gap_fraction,
+                interaction_map=interaction_map,
             )
         )
 
     return results
 
 
-def dca_many_vs_many(msa_files1: Iterable[Union[str, TextIOWrapper]],
-                     msa_files2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
-                     apc: bool = False) -> List[Tuple[np.ndarray, np.ndarray, DCAMetrics]]:
+def dca_many_vs_many(
+    msa_files1: Iterable[Union[str, TextIOWrapper]],
+    msa_files2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
+    apc: bool = False,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None
+) -> List[Tuple[np.ndarray, np.ndarray, DCAMetrics]]:
     results = []
     # msa_files1 = cast(msa_files1, to=lost)
     if msa_files2 is None:
@@ -191,16 +231,21 @@ def dca_many_vs_many(msa_files1: Iterable[Union[str, TextIOWrapper]],
                 msa_file1=msa_file1,
                 msa_file2=msa_files2,
                 apc=apc,
+                max_gap_fraction=max_gap_fraction,
+                interaction_map=interaction_map,
             )
     return results
     
 
-def model_protein_interaction(msa1: MSA, 
-                              msa2: Optional[MSA] = None,
-                              model_runner: Optional = None,
-                              seed: Optional[int] = None,
-                              max_gap_fraction: float = .9,
-                              *args, **kwargs) -> Tuple[Mapping[str, Union[float, int]], Any, PairedMSA]:
+def model_protein_interaction(
+    msa1: MSA, 
+    msa2: Optional[MSA] = None,
+    model_runner: Optional = None,
+    seed: Optional[int] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    *args, **kwargs
+) -> Tuple[Mapping[str, Union[float, int]], Any, PairedMSA]:
     
     """Model a single PPI using a pair of MSA files.
     
@@ -210,7 +255,12 @@ def model_protein_interaction(msa1: MSA,
     if model_runner is None:
         model_runner = make_model_runner(*args, **kwargs)
 
-    paired_msa = _pair_msas(msa1, msa2, max_gap_fraction=max_gap_fraction, blocked=True)
+    paired_msa = _pair_msas(
+        msa1, msa2, 
+        max_gap_fraction=max_gap_fraction, 
+        blocked=True, 
+        interaction_map=interaction_map,
+    )
     print_err(paired_msa)
 
     feature_dict = _get_af2_features(paired_msa)
@@ -226,13 +276,15 @@ def model_protein_interaction(msa1: MSA,
     return paired_msa, feature_dict, processed_feature_dict, prediction_result
 
 
-def evaluate_and_save_model(feature_dict,
-                            processed_feature_dict: Mapping[str, Any],
-                            prediction_result: Mapping[str, Any],  
-                            chain_a_length: int,
-                            filename: str,
-                            pdockq_t: float = .5,
-                            force_save: bool = False) -> ModelMetrics:
+def evaluate_and_save_model(
+    feature_dict,
+    processed_feature_dict: Mapping[str, Any],
+    prediction_result: Mapping[str, Any],  
+    chain_a_length: int,
+    filename: str,
+    pdockq_t: float = .5,
+    force_save: bool = True
+) -> ModelMetrics:
 
     """Evalulate a model and save PDB.
     
@@ -267,14 +319,18 @@ def evaluate_and_save_model(feature_dict,
                         mean_interfact_plddt=avg_interface_plddt, pdockq=pdockq)
 
 
-def build_evaluate_and_save_model(msa1: MSA,
-                                  output_dir: str,
-                                  msa2: Optional[MSA] = None,
-                                  pdockq_t: float = .5,
-                                  force_save: bool = True,
-                                  seed: Optional[int] = None,
-                                  model_runner: Optional = None,
-                                  *args, **kwargs) -> ModelMetrics:
+def build_evaluate_and_save_model(
+    msa1: MSA,
+    output_dir: str,
+    msa2: Optional[MSA] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    pdockq_t: float = .5,
+    force_save: bool = True,
+    seed: Optional[int] = None,
+    model_runner: Optional = None,
+    *args, **kwargs
+) -> ModelMetrics:
 
     """Predict the structure of a pair of proteins based on provided MSAs.
 
@@ -284,6 +340,8 @@ def build_evaluate_and_save_model(msa1: MSA,
         msa2=msa2,
         seed=seed,
         model_runner=model_runner,
+        max_gap_fraction=max_gap_fraction,
+        interaction_map=interaction_map,
         *args, **kwargs
     )
 
@@ -300,14 +358,18 @@ def build_evaluate_and_save_model(msa1: MSA,
     return metric
 
 
-def model_one_vs_many(msa_file1: Union[str, TextIOWrapper],
-                      output_dir: str,
-                      msa_file2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
-                      pdockq_t: float = .5,
-                      force_save: bool = False,
-                      seed: Optional[int] = None,
-                      model_runner: Optional = None,
-                      *args, **kwargs) -> List[ModelMetrics]:
+def model_one_vs_many(
+    msa_file1: Union[str, TextIOWrapper],
+    output_dir: str,
+    msa_file2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    pdockq_t: float = .5,
+    force_save: bool = False,
+    seed: Optional[int] = None,
+    model_runner: Optional = None,
+    *args, **kwargs
+) -> List[ModelMetrics]:
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -332,20 +394,26 @@ def model_one_vs_many(msa_file1: Union[str, TextIOWrapper],
                 force_save=force_save,
                 seed=seed,
                 model_runner=model_runner,
+                max_gap_fraction=max_gap_fraction,
+                interaction_map=interaction_map,
             )
         )
 
     return metrics
     
 
-def model_many_vs_many(msa_files1: Iterable[Union[str, TextIOWrapper]],
-                       output_dir: str,
-                       msa_files2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
-                       pdockq_t: float = .5,
-                       force_save: bool = True,
-                       seed: Optional[int] = None,
-                       model_runner: Optional = None,
-                       *args, **kwargs) -> List[ModelMetrics]:
+def model_many_vs_many(
+    msa_files1: Iterable[Union[str, TextIOWrapper]],
+    output_dir: str,
+    msa_files2: Optional[Iterable[Union[str, TextIOWrapper]]] = None,
+    max_gap_fraction: float = .9,
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    pdockq_t: float = .5,
+    force_save: bool = True,
+    seed: Optional[int] = None,
+    model_runner: Optional = None,
+    *args, **kwargs
+) -> List[ModelMetrics]:
 
     model_runner = make_model_runner(*args, **kwargs)
     metrics = []
@@ -360,10 +428,12 @@ def model_many_vs_many(msa_files1: Iterable[Union[str, TextIOWrapper]],
         metrics += model_one_vs_many(
                 msa_file1=msa_file1,
                 msa_file2=msa_files2,
+                model_runner=model_runner,
                 output_dir=output_dir,
                 pdockq_t=pdockq_t,
                 force_save=force_save,
                 seed=seed,
-                model_runner=model_runner,
+                max_gap_fraction=max_gap_fraction,
+                interaction_map=interaction_map,
             )
     return metrics

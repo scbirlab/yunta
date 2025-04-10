@@ -1,6 +1,6 @@
 [project]
 name = "yunta"
-version = "0.0.1.post1"
+version = "0.0.2"
 authors = [
   { name="Eachan Johnson", email="eachan.johnson@crick.ac.uk" },
 ]
@@ -30,10 +30,10 @@ dependencies = [
   "absl-py",
   "bioino",
   "biopython",
-  "carabiner-tools[mpl,pd]",
+  "carabiner-tools[mpl,pd]>=0.0.4",
   "dm-haiku==0.0.12",
   "dm-tree",
-  "jax",
+  "jax<=0.4.35",
   "ml-collections==0.1.0",
   "openpyxl==3.1.0", 
   "rf2t-micro",
@@ -42,13 +42,13 @@ dependencies = [
   "tensorrt",
   "torch>=2.3",
   "torchvision",
-  "tqdm"
+  "tqdm",
 ]
 
 [project.optional-dependencies]
-cuda12 = ["jax[cuda12]"]
-cuda12_local = ["jax[cuda12_local]"]
-cuda11 = ["jax[cuda11]"]
+cuda12 = ["jax[cuda12]<=0.4.35"]
+cuda12_local = ["jax[cuda12_local]<=0.4.35"]
+cuda11 = ["jax[cuda11]<=0.4.35"]
 
 [project.urls]
 "Homepage" = "https://github.com/scbirlab/yunta"
@@ -60,6 +60,7 @@ yunta = "yunta.cli:main"
 [tool.setuptools]
 # If there are data files included in your packages that need to be
 # installed, specify them here.
+package-data = {"yunta" = ["data/*.csv"]}
 
 [build-system]
 # These are the assumed default build requirements from pip:
