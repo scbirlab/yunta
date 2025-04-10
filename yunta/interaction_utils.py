@@ -93,7 +93,6 @@ def _create_data_json(
             indent=4,
         )
     additional = defaultdict(set)
-    # if not test_mode:
     for key, value in tqdm(interaction_map["name"].items()):
         vals_to_add = set()
         for v in value:
@@ -116,9 +115,9 @@ def _create_data_json(
         interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
     if test_mode:
         print_err("Loading interaction map directly into memory")
-        return interaction_map
+        return interaction_map["name"]
     with gzip.open(json_path, mode='wt', encoding='UTF-8') as f:
-        json.dump(interaction_map, f, sort_keys=not test_mode, indent=4)
+        json.dump(interaction_map, f, sort_keys=True, indent=4)
     return None
 
 
