@@ -27,7 +27,7 @@ _data_csv_path = os.path.join(
 )
 _data_json_path = os.path.join(
     _data_root,
-    "interactions.json" + (".gz" if TEST_MODE == "0" else ""),
+    "interactions.json.gz",
 )
 _name2ncbi_path = os.path.join(
     _data_root,
@@ -124,28 +124,27 @@ def _create_data_json(
 
 def organism_interactions() -> Dict[str, List[str]]:
 
-    global _INTERACTION_FILE_LOADED
+    test_mode = TEST_MODE == "1"
 
-    if not os.path.exists(_data_json_path):
+    if test_mode:
         print_err("Organism interaction lookup table not yet built; building...", flush=True)
-        _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
-        print_err("Done!")
-
-    if not _INTERACTION_FILE_LOADED:
-        try:
+        ORGANISM_INTERACTIONS.update(
+            _create_data_json(
+                _data_csv_path, 
+                _data_json_path, 
+                _name2ncbi_path, 
+                test_mode=test_mode,
+            )
+        )
+    else:
+        if not os.path.exists(_data_json_path):
+            print_err("Organism interaction lookup table not yet built; building...", flush=True)
+            _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
+            print_err("Done!")
+        global _INTERACTION_FILE_LOADED
+        if not _INTERACTION_FILE_LOADED:
             with gzip.open(_data_json_path, "rt", encoding='UTF-8') as f:
                 ORGANISM_INTERACTIONS.update(json.load(f))
-        except gzip.BadGzipFile:  # GH Actions with git-lfs
-            test_mode = TEST_MODE == "1"
-            print_err("INFO: Running in test mode!")
-            ORGANISM_INTERACTIONS.update(
-                _create_data_json(
-                    _data_csv_path, 
-                    _data_json_path, 
-                    _name2ncbi_path, 
-                    test_mode=test_mode,
-                )
-            )
-        _INTERACTION_FILE_LOADED = True
+            _INTERACTION_FILE_LOADED = True
 
     return ORGANISM_INTERACTIONS
