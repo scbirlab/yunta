@@ -115,6 +115,7 @@ def _create_data_json(
     if not test_mode:
         interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
     if test_mode:
+        print_err("Loading interaction map directly into memory")
         return interaction_map
     with gzip.open(json_path, mode='wt', encoding='UTF-8') as f:
         json.dump(interaction_map, f, sort_keys=not test_mode, indent=4)
