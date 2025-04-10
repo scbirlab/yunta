@@ -122,6 +122,8 @@ def _create_data_json(
 
 def organism_interactions() -> Dict[str, List[str]]:
 
+    global _INTERACTION_FILE_LOADED
+
     if not os.path.exists(_data_json_path):
         print_err("Organism interaction lookup table not yet built; building...", flush=True)
         _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
@@ -136,7 +138,6 @@ def organism_interactions() -> Dict[str, List[str]]:
             ORGANISM_INTERACTIONS.update(
                 _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path, test_mode=test_mode)
             )
-
-    _INTERACTION_FILE_LOADED = True
+        _INTERACTION_FILE_LOADED = True
 
     return ORGANISM_INTERACTIONS
