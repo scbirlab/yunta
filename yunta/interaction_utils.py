@@ -127,7 +127,7 @@ def organism_interactions() -> Dict[str, List[str]]:
     test_mode = TEST_MODE == "1"
 
     if test_mode:
-        print_err("Organism interaction lookup table not yet built; building...", flush=True)
+        print_err("Building organism interaction lookup table and loading into memory...", flush=True)
         ORGANISM_INTERACTIONS.update(
             _create_data_json(
                 _data_csv_path, 
