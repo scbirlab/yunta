@@ -112,7 +112,11 @@ def _create_data_json(
             for ncbi_key in ncbi_keys:
                 additional[ncbi_key] = interaction_map["name"][key]
     interaction_map["name"].update(additional)
-    interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
+    if test_mode:
+        list_f = list
+    else:
+        list_f = sorted
+    interaction_map = {key: list_f(val) for key, val in interaction_map["name"].items()}
     if test_mode:
         return interaction_map
     with gzip.open(json_path, mode='wt', encoding='UTF-8') as f:
@@ -134,9 +138,13 @@ def organism_interactions() -> Dict[str, List[str]]:
             with gzip.open(_data_json_path, "rt", encoding='UTF-8') as f:
                 ORGANISM_INTERACTIONS.update(json.load(f))
         except gzip.BadGzipFile:  # GH Actions with git-lfs
-            test_mode = TEST_MODE == "1"
             ORGANISM_INTERACTIONS.update(
-                _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path, test_mode=test_mode)
+                _create_data_json(
+                    _data_csv_path, 
+                    _data_json_path, 
+                    _name2ncbi_path, 
+                    test_mode=TEST_MODE == "1",
+                )
             )
         _INTERACTION_FILE_LOADED = True
 
