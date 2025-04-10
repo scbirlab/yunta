@@ -240,10 +240,12 @@ def main() -> None:
                           main=_af2_many_vs_many,
                           options=[inputs_list, inputs_list2, list_file, interspecies, output, params, recycles, plot])
 
-    app = CLIApp("sppid",
-                 version=__version__,
-                 description="Screening protein-protein interactions using DCA, RosettaFold-2track, and AlphaFold2.",
-                 commands=[dca_single, dca_many, rf2t_single, af2_single, af2_many])
+    app = CLIApp(
+        "yunta",
+        version=__version__,
+        description="Screening protein-protein interactions using DCA, RosettaFold-2track, and AlphaFold2.",
+        commands=[dca_single, dca_many, rf2t_single, af2_single, af2_many],
+    )
 
     app.run()
     return None
