@@ -16,7 +16,8 @@ from tqdm.auto import tqdm
 from ..interaction_utils import organism_interactions, _name_normalizer
 
 _A3M_ALPHABET = tuple("ARNDCQEGHILKMFPSTWYV-")
-_A3M_ALPHABET_DICT = dict(zip(_A3M_ALPHABET, range(len(_A3M_ALPHABET))))
+_A3M_ALPHABET_SIZE: int = len(_A3M_ALPHABET)
+_A3M_ALPHABET_DICT = dict(zip(_A3M_ALPHABET, range(_A3M_ALPHABET_SIZE)))
 _PAIRED_SPACER = ':::'
 __BLOCK_GAPS__ = "__BLOCK_GAPS__"
 
