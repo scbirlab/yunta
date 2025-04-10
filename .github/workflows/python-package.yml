@@ -53,4 +53,4 @@ jobs:
       run: |
         set -x
         echo $(pwd)
-        bash test/scripts/test.sh gh
+        YUNTA_TEST=1 bash test/scripts/test.sh gh

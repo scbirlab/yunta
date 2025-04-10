@@ -32,7 +32,7 @@ _name2ncbi_path = os.path.join(
 
 _INTERACTION_FILE_LOADED: bool = False
 ORGANISM_INTERACTIONS: dict = {}
-TEST_MODE: str = os.environ.get("YUNTA_TEST", "0")
+TEST_MODE: str = str(os.environ.get("YUNTA_TEST", "0"))
 
 def _name_normalizer(x: Iterable[str]):
     x = [str(name).split("subsp.")[0].split("sp.")[0].split("(")[0].strip("'").strip().casefold() for name in x]
