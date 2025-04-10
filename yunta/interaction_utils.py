@@ -13,6 +13,10 @@ from carabiner import cast, print_err
 import pandas as pd
 from tqdm.auto import tqdm
 
+_INTERACTION_FILE_LOADED: bool = False
+ORGANISM_INTERACTIONS: dict = {}
+TEST_MODE: str = str(os.environ.get("YUNTA_TEST", "0"))
+
 _data_root = os.path.join(
     os.path.dirname(__file__), 
     "data",
@@ -23,16 +27,13 @@ _data_csv_path = os.path.join(
 )
 _data_json_path = os.path.join(
     _data_root,
-    "interactions.json.gz",
+    "interactions.json" + (".gz" if TEST_MODE == "0" else ""),
 )
 _name2ncbi_path = os.path.join(
     _data_root,
     "name-to-ncbi.json",
 )
 
-_INTERACTION_FILE_LOADED: bool = False
-ORGANISM_INTERACTIONS: dict = {}
-TEST_MODE: str = str(os.environ.get("YUNTA_TEST", "0"))
 
 def _name_normalizer(x: Iterable[str]):
     x = [str(name).split("subsp.")[0].split("sp.")[0].split("(")[0].strip("'").strip().casefold() for name in x]
@@ -113,10 +114,10 @@ def _create_data_json(
     interaction_map["name"].update(additional)
 
     if test_mode:
-        interaction_map = {key: list(val) for key, val in interaction_map["name"].items()}
+        return {key: list(val) for key, val in interaction_map["name"].items()}
     else:
         interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
-    with gzip.open(json_path, 'wt', encoding='UTF-8') as f:
+    with gzip.open(json_path, mode='wt', encoding='UTF-8') as f:
         json.dump(interaction_map, f, sort_keys=not test_mode, indent=4)
     return None
 
@@ -133,6 +134,10 @@ def organism_interactions() -> Dict[str, List[str]]:
                 ORGANISM_INTERACTIONS.update(json.load(f))
         except gzip.BadGzipFile:  # GH Actions with git-lfs
             test_mode = TEST_MODE == "1"
-            _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path, test_mode=test_mode)
+            ORGANISM_INTERACTIONS.update(
+                _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path, test_mode=test_mode)
+            )
+
+         _INTERACTION_FILE_LOADED = True
 
     return ORGANISM_INTERACTIONS
