@@ -112,11 +112,8 @@ def _create_data_json(
             for ncbi_key in ncbi_keys:
                 additional[ncbi_key] = interaction_map["name"][key]
     interaction_map["name"].update(additional)
-    if test_mode:
-        list_f = list
-    else:
-        list_f = sorted
-    interaction_map = {key: list_f(val) for key, val in interaction_map["name"].items()}
+    if not test_mode:
+        interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
     if test_mode:
         return interaction_map
     with gzip.open(json_path, mode='wt', encoding='UTF-8') as f:
