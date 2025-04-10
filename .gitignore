@@ -26,6 +26,3 @@ __pycache__
 /lib/
 /share/
 /test/output/
-
-# generated data fils
-/yunta/data/*.json*
