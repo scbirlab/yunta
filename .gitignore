@@ -1,6 +1,3 @@
-data/dev/some_vs_some
-data/dev/all_vs_all
-
 *.pyc
 *.so
 *.egg-info
@@ -29,3 +26,6 @@ __pycache__
 /lib/
 /share/
 /test/output/
+
+# generated data fils
+/yunta/data/*.json*
