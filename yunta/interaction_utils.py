@@ -30,6 +30,9 @@ _name2ncbi_path = os.path.join(
     "name-to-ncbi.json",
 )
 
+_INTERACTION_FILE_LOADED: bool = False
+ORGANISM_INTERACTIONS: dict = {}
+
 def _name_normalizer(x: Iterable[str]):
     x = [str(name).split("subsp.")[0].split("sp.")[0].split("(")[0].strip("'").strip().casefold() for name in x]
     x = [" ".join(name.split(" ")[:2]) if (not "virus" in name and not "phage" in name) else name for name in x]
@@ -118,7 +121,8 @@ def organism_interactions() -> Dict[str, List[str]]:
         _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
         print_err("Done!")
 
-    with gzip.open(_data_json_path, "r") as f:
-        ORGANISM_INTERACTIONS = json.load(f)
+    if not _INTERACTION_FILE_LOADED:
+        with gzip.open(_data_json_path, "r") as f:
+            ORGANISM_INTERACTIONS.update(json.load(f))
 
     return ORGANISM_INTERACTIONS
