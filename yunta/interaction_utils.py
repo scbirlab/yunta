@@ -92,25 +92,25 @@ def _create_data_json(
             indent=4,
         )
     additional = defaultdict(set)
-    if not test_mode:
-        for key, value in tqdm(interaction_map["name"].items()):
-            vals_to_add = set()
-            for v in value:
-                try:
-                    ncbi_keys = name_to_ncbi[v]
-                except KeyError:
-                    pass
-                else:
-                    vals_to_add |= ncbi_keys
-            interaction_map["name"][key] |= vals_to_add
+    # if not test_mode:
+    for key, value in tqdm(interaction_map["name"].items()):
+        vals_to_add = set()
+        for v in value:
             try:
-                ncbi_keys = name_to_ncbi[key]
+                ncbi_keys = name_to_ncbi[v]
             except KeyError:
                 pass
             else:
-                for ncbi_key in ncbi_keys:
-                    additional[ncbi_key] = interaction_map["name"][key]
-        interaction_map["name"].update(additional)
+                vals_to_add |= ncbi_keys
+        interaction_map["name"][key] |= vals_to_add
+        try:
+            ncbi_keys = name_to_ncbi[key]
+        except KeyError:
+            pass
+        else:
+            for ncbi_key in ncbi_keys:
+                additional[ncbi_key] = interaction_map["name"][key]
+    interaction_map["name"].update(additional)
 
     if test_mode:
         interaction_map = {key: list(val) for key, val in interaction_map["name"].items()}
