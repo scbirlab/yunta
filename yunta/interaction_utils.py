@@ -122,7 +122,7 @@ def organism_interactions() -> Dict[str, List[str]]:
         print_err("Done!")
 
     if not _INTERACTION_FILE_LOADED:
-        with gzip.open(_data_json_path, "r") as f:
+        with gzip.open(_data_json_path, "rt", encoding='UTF-8') as f:
             ORGANISM_INTERACTIONS.update(json.load(f))
 
     return ORGANISM_INTERACTIONS
