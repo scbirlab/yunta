@@ -32,6 +32,7 @@ _name2ncbi_path = os.path.join(
 
 _INTERACTION_FILE_LOADED: bool = False
 ORGANISM_INTERACTIONS: dict = {}
+TEST_MODE: str = os.environ.get("YUNTA_TEST", "0")
 
 def _name_normalizer(x: Iterable[str]):
     x = [str(name).split("subsp.")[0].split("sp.")[0].split("(")[0].strip("'").strip().casefold() for name in x]
@@ -44,7 +45,8 @@ def _create_data_json(
     name2ncbi_path: str,
     ncbi_columns: Iterable[str] = ("pathogen_taxon_id", "host_taxon_id"),
     name_cols: Iterable[str] = ("pathogen_name", "host_name"),
-    prefix: str = "NCBI:"
+    prefix: str = "NCBI:",
+    test_mode: bool = False
 ) -> None:
     col1, col2 = ncbi_columns
     name_col1, name_col2 = name_cols
@@ -90,28 +92,32 @@ def _create_data_json(
             indent=4,
         )
     additional = defaultdict(set)
-    for key, value in tqdm(interaction_map["name"].items()):
-        vals_to_add = set()
-        for v in value:
+    if not test_mode:
+        for key, value in tqdm(interaction_map["name"].items()):
+            vals_to_add = set()
+            for v in value:
+                try:
+                    ncbi_keys = name_to_ncbi[v]
+                except KeyError:
+                    pass
+                else:
+                    vals_to_add |= ncbi_keys
+            interaction_map["name"][key] |= vals_to_add
             try:
-                ncbi_keys = name_to_ncbi[v]
+                ncbi_keys = name_to_ncbi[key]
             except KeyError:
                 pass
             else:
-                vals_to_add |= ncbi_keys
-        interaction_map["name"][key] |= vals_to_add
-        try:
-            ncbi_keys = name_to_ncbi[key]
-        except KeyError:
-            pass
-        else:
-            for ncbi_key in ncbi_keys:
-                additional[ncbi_key] = interaction_map["name"][key]
-    interaction_map["name"].update(additional)
-            
-    interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
+                for ncbi_key in ncbi_keys:
+                    additional[ncbi_key] = interaction_map["name"][key]
+        interaction_map["name"].update(additional)
+
+    if test_mode:
+        interaction_map = {key: list(val) for key, val in interaction_map["name"].items()}
+    else:
+        interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
     with gzip.open(json_path, 'wt', encoding='UTF-8') as f:
-        json.dump(interaction_map, f, sort_keys=True, indent=4)
+        json.dump(interaction_map, f, sort_keys=not test_mode, indent=4)
     return None
 
 def organism_interactions() -> Dict[str, List[str]]:
@@ -122,7 +128,11 @@ def organism_interactions() -> Dict[str, List[str]]:
         print_err("Done!")
 
     if not _INTERACTION_FILE_LOADED:
-        with gzip.open(_data_json_path, "rt", encoding='UTF-8') as f:
-            ORGANISM_INTERACTIONS.update(json.load(f))
+        try:
+            with gzip.open(_data_json_path, "rt", encoding='UTF-8') as f:
+                ORGANISM_INTERACTIONS.update(json.load(f))
+        except gzip.BadGzipFile:  # GH Actions with git-lfs
+            test_mode = TEST_MODE == "1"
+            _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path, test_mode=test_mode)
 
     return ORGANISM_INTERACTIONS
