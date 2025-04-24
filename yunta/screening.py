@@ -1,8 +1,9 @@
 """Tools to screen for PPIs."""
 
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 
 from io import TextIOWrapper
+from itertools import product
 import os
 import random
 import sys
@@ -10,6 +11,7 @@ from time import time
 
 from carabiner import cast, print_err
 import numpy as np
+from numpy.typing import ArrayLike
 from tqdm.auto import tqdm
 
 from .io import save_design
@@ -38,6 +40,52 @@ def _pair_msas(
     )
 
 
+def _calculate_interaction_blocks(
+    paired_msa: PairedMSA,
+    interaction_fn: Callable,
+    chunksize: int = 750,
+    **kwargs
+) -> np.ndarray:
+
+    token_ids = np.asarray(paired_msa.sequence_token_ids)
+    n_msa_columns = token_ids.shape[-1]
+    split_size = chunksize
+    if n_msa_columns > chunksize:
+
+        print_err(f"INFO: Splitting MSA with {n_msa_columns} columns into pairs of {split_size}-column chunks.")
+        chunks = np.split(token_ids, list(range(split_size, n_msa_columns, split_size)), axis=-1)
+        n_chunks = len(chunks)
+        print_err(f"INFO: Split MSA with {n_msa_columns} columns into {n_chunks} x {split_size}-column chunks.")
+
+        result = np.zeros((n_msa_columns, n_msa_columns), dtype=np.float32)
+        for (i, chunk_i), (j, chunk_j) in product(enumerate(chunks), enumerate(chunks)):
+            if j > i:
+                start_idx, second_idx = (i * split_size), (j * split_size)
+                this_chain_a_len = max(0, paired_msa.chain_a_length - start_idx)
+                chunk_result = interaction_fn(
+                    np.concatenate([chunk_i, chunk_j], axis=-1), 
+                    chain_a_length=this_chain_a_len,
+                    **kwargs,
+                )
+                result_block1, result_block2 = np.split(chunk_result, [split_size], axis=0)
+                result_block11, result_block12 = np.split(result_block1, [split_size], axis=-1)
+                result_block21, result_block22 = np.split(result_block2, [split_size], axis=-1)
+                block1_idx = slice(start_idx, start_idx + chunk_i.shape[-1])
+                block2_idx = slice(second_idx, second_idx + chunk_j.shape[-1])
+                result[block1_idx,block1_idx] = result_block11
+                result[block1_idx,block2_idx] = result_block12
+                result[block2_idx,block1_idx] = result_block21
+                result[block2_idx,block2_idx] = result_block22
+    else:
+        result = interaction_fn(
+            token_ids, 
+            chain_a_length=paired_msa.chain_a_length,
+            **kwargs,
+        )
+
+    return result
+
+
 def _get_af2_features(paired_msa: PairedMSA) -> Dict[str, Union[str, int]]:
 
     msa_seqs = paired_msa.sequences()
@@ -62,7 +110,8 @@ def rf2track(
     max_gap_fraction: float = .9,
     interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
     cpu: bool = True,
-    model: Optional = None
+    model: Optional = None,
+    chunksize: int = 1500 
 ) -> Tuple[np.ndarray, np.ndarray, RF2TMetrics]:
 
     paired_msa = _pair_msas(
@@ -82,11 +131,18 @@ def rf2track(
         torch.cuda.empty_cache()
         model = Predictor(use_cpu=cpu)
 
-    result, cα_coords = model.predict(
-        np.asarray(paired_msa.sequence_token_ids), 
-        chain_a_length=paired_msa.chain_a_length,
-    )
+    def _rf2t(m, chain_a_length: int):
+        result, cα_coords = model.predict(
+            m, 
+            chain_a_length=chain_a_length,
+        )
+        return result
 
+    result = _calculate_interaction_blocks(
+        paired_msa,
+        interaction_fn=_rf2t,
+    )
+    
     result_interaction = result[:chain_a_length, chain_a_length:]
     metrics = RF2TMetrics(
         ID=paired_msa.name, 
@@ -159,7 +215,17 @@ def paired_dca(
 
     from .dca_torch import calculate_dca
 
-    result = calculate_dca(msa=paired_msa, apc=apc)
+    def _dca(m, chain_a_length: Optional[int] = None, **kwargs):
+        return calculate_dca(
+            msa=m, 
+            **kwargs,
+        )
+
+    result = _calculate_interaction_blocks(
+        paired_msa,
+        interaction_fn=_dca,
+        apc=apc,
+    )
     result_interaction = result[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
 
     metrics = DCAMetrics(
@@ -257,8 +323,8 @@ def model_protein_interaction(
 
     paired_msa = _pair_msas(
         msa1, msa2, 
-        max_gap_fraction=max_gap_fraction, 
         blocked=True, 
+        max_gap_fraction=max_gap_fraction, 
         interaction_map=interaction_map,
     )
     print_err(paired_msa)
