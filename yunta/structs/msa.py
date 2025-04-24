@@ -163,9 +163,11 @@ class MSA:
         if len(seq_length) == 0:
             raise AttributeError(f"No sequences! The lines are: {', '.join(map(str, self.lines))}")
         self.seq_length = seq_length.pop()
-        self.sequence_token_ids = [[_A3M_ALPHABET_DICT.get(letter, len(_A3M_ALPHABET_DICT) - 1) 
-                                     for letter in line.sequence]
-                                    for line in self.lines]
+        self.sequence_token_ids = [
+            [_A3M_ALPHABET_DICT.get(letter, len(_A3M_ALPHABET_DICT) - 1) 
+            for letter in line.sequence]
+            for line in self.lines
+        ]
 
     def sequences(self) -> List[str]:
         return [line.sequence for line in self.lines]

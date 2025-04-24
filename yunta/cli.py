@@ -196,7 +196,7 @@ def main() -> None:
                      help='Directory for saving plots. Default: don\'t plot.')
     cpu = CLIOption('--cpu', '-c', 
                     action='store_true',
-                    help='Whether to use CPU only. Default: use GPU.')
+                    help='Whether to use CPU only. Default: use GPU if available.')
     output_file = CLIOption('--output', '-o', 
                             default=sys.stdout,
                             type=FileType('w'), 
