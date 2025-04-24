@@ -7,11 +7,12 @@ import sys
 
 from carabiner import print_err
 import numpy as np
+from numpy.typing import ArrayLike
 import torch
 from torch import FloatTensor, Tensor
 import torch.nn.functional as F
 
-from .structs.msa import MSA, _A3M_ALPHABET, _A3M_ALPHABET_SIZE
+from .structs.msa import _A3M_ALPHABET, _A3M_ALPHABET_SIZE
 
 NON_GAP_IDX = [i for i, char in enumerate(_A3M_ALPHABET) if char != "-"]
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -122,7 +123,7 @@ def _calculate_dca(
         .square()
         .sum(dim=(1, 3))
         .sqrt()
-    ) #* (1. - I_ncol)
+    ) * (1. - I_ncol)
 
     if apc:
         apc_factor = (
@@ -140,7 +141,7 @@ def _calculate_dca(
 
 
 def calculate_dca(
-    msa: MSA, 
+    msa: ArrayLike, 
     apc: bool = False,
     gpu: bool = True,
     min_identical_fraction: float = .8,
@@ -153,7 +154,7 @@ def calculate_dca(
     """
     with torch.set_grad_enabled(False):
         msa_token_ids = torch.tensor(
-            msa.sequence_token_ids,
+            msa,
             dtype=torch.int64,
             device=DEVICE,
         )
