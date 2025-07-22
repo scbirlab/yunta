@@ -16,6 +16,14 @@ from tqdm.auto import tqdm
 _INTERACTION_FILE_LOADED: bool = False
 ORGANISM_INTERACTIONS: dict = {}
 TEST_MODE: str = str(os.environ.get("YUNTA_TEST", "0"))
+CACHE_PATH: str = str(os.environ.get(
+    "YUNTA_CACHE", 
+    os.path.join(
+        os.path.realpath(os.path.expanduser("~")),
+        ".cache",
+        "yunta",
+    ),
+))
 
 _data_root = os.path.join(
     os.path.dirname(__file__), 
@@ -26,11 +34,11 @@ _data_csv_path = os.path.join(
     "20250409_hpi.csv",
 )
 _data_json_path = os.path.join(
-    _data_root,
+    CACHE_PATH,
     "interactions.json.gz",
 )
 _name2ncbi_path = os.path.join(
-    _data_root,
+    CACHE_PATH,
     "name-to-ncbi.json",
 )
 
@@ -121,9 +129,9 @@ def _create_data_json(
     return None
 
 
-def organism_interactions() -> Dict[str, List[str]]:
+def organism_interactions(cache: bool = False) -> Dict[str, List[str]]:
 
-    test_mode = TEST_MODE == "1"
+    test_mode = (TEST_MODE == "1") or not cache
 
     if test_mode:
         print_err("Building organism interaction lookup table and loading into memory...", flush=True)
@@ -136,6 +144,8 @@ def organism_interactions() -> Dict[str, List[str]]:
             )
         )
     else:
+        if not os.path.exists(CACHE_PATH):
+            os.makedirs(CACHE_PATH)
         if not os.path.exists(_data_json_path):
             print_err("Organism interaction lookup table not yet built; building...", flush=True)
             _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
