@@ -124,7 +124,7 @@ def _create_data_json(
 
 
 def organism_interactions(
-    cache: Optional[str] = CACHE_PATH, 
+    cache: str = CACHE_PATH, 
     use_cache: bool = False
 ) -> Dict[str, List[str]]:
 
