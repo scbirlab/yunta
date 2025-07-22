@@ -93,13 +93,14 @@ def _create_data_json(
             name_to_ncbi[getattr(row, name_col)].add(f"{prefix}{int(getattr(row, ncbi_col))}")
     # make sure NCBI Taxon IDs aren't overly specific
     # interaction_map_expanded = deepcopy(interaction_map)
-    with open(name2ncbi_path, "w") as f:
-        json.dump( 
-            {key: sorted(val) for key, val in name_to_ncbi.items()}, 
-            f, 
-            sort_keys=True, 
-            indent=4,
-        )
+    if not test_mode:
+        with open(name2ncbi_path, "w") as f:
+            json.dump( 
+                {key: sorted(val) for key, val in name_to_ncbi.items()}, 
+                f, 
+                sort_keys=True, 
+                indent=4,
+            )
     additional = defaultdict(set)
     for key, value in tqdm(interaction_map["name"].items()):
         vals_to_add = set()
