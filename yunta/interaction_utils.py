@@ -124,7 +124,7 @@ def _create_data_json(
 
 def organism_interactions(
     cache: Optional[str] = CACHE_PATH, 
-    use_cache: bool = True
+    use_cache: bool = False
 ) -> Dict[str, List[str]]:
 
     test_mode = (TEST_MODE == "1") or not use_cache
