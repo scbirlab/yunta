@@ -24,6 +24,7 @@ CACHE_PATH: str = str(os.environ.get(
         "yunta",
     ),
 ))
+USE_CACHE: str = str(os.environ.get("YUNTA_USE_CACHE", "False"))
 
 _data_root = os.path.join(
     os.path.dirname(__file__), 
@@ -127,6 +128,7 @@ def organism_interactions(
     use_cache: bool = False
 ) -> Dict[str, List[str]]:
 
+    use_cache = use_cache or (USE_CACHE == "True")
     test_mode = (TEST_MODE == "1") or not use_cache
     _data_json_path, _name2ncbi_path = (
         os.path.join(cache, filename) for filename in ("interactions.json.gz", "name-to-ncbi.json")
