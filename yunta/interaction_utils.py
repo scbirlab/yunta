@@ -33,14 +33,6 @@ _data_csv_path = os.path.join(
     _data_root,
     "20250409_hpi.csv",
 )
-_data_json_path = os.path.join(
-    CACHE_PATH,
-    "interactions.json.gz",
-)
-_name2ncbi_path = os.path.join(
-    CACHE_PATH,
-    "name-to-ncbi.json",
-)
 
 
 def _name_normalizer(x: Iterable[str]):
@@ -130,9 +122,15 @@ def _create_data_json(
     return None
 
 
-def organism_interactions(cache: bool = False) -> Dict[str, List[str]]:
+def organism_interactions(
+    cache: Optional[str] = CACHE_PATH, 
+    use_cache: bool = True
+) -> Dict[str, List[str]]:
 
-    test_mode = (TEST_MODE == "1") or not cache
+    test_mode = (TEST_MODE == "1") or not use_cache
+    _data_json_path, _name2ncbi_path = (
+        os.path.join(cache, filename) for filename in ("interactions.json.gz", "name-to-ncbi.json")
+    )
 
     if test_mode:
         print_err("Building organism interaction lookup table and loading into memory...", flush=True)
