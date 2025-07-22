@@ -16,6 +16,15 @@ from tqdm.auto import tqdm
 _INTERACTION_FILE_LOADED: bool = False
 ORGANISM_INTERACTIONS: dict = {}
 TEST_MODE: str = str(os.environ.get("YUNTA_TEST", "0"))
+CACHE_PATH: str = str(os.environ.get(
+    "YUNTA_CACHE", 
+    os.path.join(
+        os.path.realpath(os.path.expanduser("~")),
+        ".cache",
+        "yunta",
+    ),
+))
+USE_CACHE: str = str(os.environ.get("YUNTA_USE_CACHE", "False"))
 
 _data_root = os.path.join(
     os.path.dirname(__file__), 
@@ -24,14 +33,6 @@ _data_root = os.path.join(
 _data_csv_path = os.path.join(
     _data_root,
     "20250409_hpi.csv",
-)
-_data_json_path = os.path.join(
-    _data_root,
-    "interactions.json.gz",
-)
-_name2ncbi_path = os.path.join(
-    _data_root,
-    "name-to-ncbi.json",
 )
 
 
@@ -85,13 +86,14 @@ def _create_data_json(
             name_to_ncbi[getattr(row, name_col)].add(f"{prefix}{int(getattr(row, ncbi_col))}")
     # make sure NCBI Taxon IDs aren't overly specific
     # interaction_map_expanded = deepcopy(interaction_map)
-    with open(name2ncbi_path, "w") as f:
-        json.dump( 
-            {key: sorted(val) for key, val in name_to_ncbi.items()}, 
-            f, 
-            sort_keys=True, 
-            indent=4,
-        )
+    if not test_mode:
+        with open(name2ncbi_path, "w") as f:
+            json.dump( 
+                {key: sorted(val) for key, val in name_to_ncbi.items()}, 
+                f, 
+                sort_keys=True, 
+                indent=4,
+            )
     additional = defaultdict(set)
     for key, value in tqdm(interaction_map["name"].items()):
         vals_to_add = set()
@@ -121,9 +123,16 @@ def _create_data_json(
     return None
 
 
-def organism_interactions() -> Dict[str, List[str]]:
+def organism_interactions(
+    cache: str = CACHE_PATH, 
+    use_cache: bool = False
+) -> Dict[str, List[str]]:
 
-    test_mode = TEST_MODE == "1"
+    use_cache = use_cache or (USE_CACHE == "True")
+    test_mode = (TEST_MODE == "1") or not use_cache
+    _data_json_path, _name2ncbi_path = (
+        os.path.join(cache, filename) for filename in ("interactions.json.gz", "name-to-ncbi.json")
+    )
 
     if test_mode:
         print_err("Building organism interaction lookup table and loading into memory...", flush=True)
@@ -136,6 +145,8 @@ def organism_interactions() -> Dict[str, List[str]]:
             )
         )
     else:
+        if not os.path.exists(CACHE_PATH):
+            os.makedirs(CACHE_PATH)
         if not os.path.exists(_data_json_path):
             print_err("Organism interaction lookup table not yet built; building...", flush=True)
             _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
