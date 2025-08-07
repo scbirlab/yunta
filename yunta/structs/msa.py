@@ -372,7 +372,7 @@ class PairedMSA(MSA):
             {
                 _species: [
                     line for line in msa.lines 
-                    if getattr(line.description, name_attr) == _species
+                    if _species in (getattr(line.description, name_attr), getattr(line.description, fallback_name_attr))
                 ] for _species in set(
                     getattr(line.description, name_attr)
                     if getattr(line.description, name_attr) in interaction_map
