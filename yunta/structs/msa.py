@@ -309,16 +309,21 @@ class PairedMSA(MSA):
         interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
         strict_species_match: bool = False
     ) -> Tuple[List[PairedMSALine], int]:
+        name_attr = "species_id"
         if strict_species_match or interaction_map is None:
-            name_attr = "species_id"
+            fallback_name_attr = name_attr
         else:
-            name_attr = "generic_species_name"
+            fallback_name_attr = "generic_species_name"
         if msa2 is None:
             msa2 = deepcopy(msa1)
         msa1_known, msa2_known = (msa.filter_by_known_species() for msa in (msa1, msa2))
-        all_species = [getattr(line.description, name_attr) for msa in (msa1_known, msa2_known) for line in msa.lines]
 
         if interaction_map is None:
+            all_species = [
+                getattr(line.description, name_attr)
+                for msa in (msa1_known, msa2_known) 
+                for line in msa.lines
+            ]
             interaction_map = {
                 _species: set([_species]) for _species in all_species
             }
@@ -326,7 +331,8 @@ class PairedMSA(MSA):
             interaction_map = organism_interactions()
         elif isinstance(interaction_map, Mapping):
             interaction_map = {
-                key: set(cast(val, to=list) + [key]) for key, val in interaction_map.items()
+                key: set(cast(val, to=list) + [key]) 
+                for key, val in interaction_map.items()
             }
         else: 
             raise ValueError(
@@ -336,24 +342,42 @@ class PairedMSA(MSA):
                 """
             )
 
-        PairedMSA._check_ref_match(
-            msa1=msa1_known, 
-            msa2=msa2_known, 
-            interaction_map=interaction_map, 
-            name_attr=name_attr,
-        )
+        try:
+            PairedMSA._check_ref_match(
+                msa1=msa1_known, 
+                msa2=msa2_known, 
+                interaction_map=interaction_map, 
+                name_attr=name_attr,
+            )
+        except AttributeError as e:
+            if fallback_name_attr != name_attr:
+                PairedMSA._check_ref_match(
+                    msa1=msa1_known, 
+                    msa2=msa2_known, 
+                    interaction_map=interaction_map, 
+                    name_attr=fallback_name_attr,
+                )
+                query_name_attr = fallback_name_attr
+            else:
+                raise e
+        else:
+            query_name_attr = name_attr
         #Get the matches
         query_pair = tuple(
-            getattr(list(msa.lines)[0].description, name_attr) 
+            getattr(list(msa.lines)[0].description, query_name_attr) 
             for msa in (msa1_known, msa2_known)
         )
+
         species_msa1, species_msa2  = (
             {
                 _species: [
                     line for line in msa.lines 
-                    if getattr(line.description, name_attr) == _species
+                    if _species in (getattr(line.description, name_attr), getattr(line.description, fallback_name_attr))
                 ] for _species in set(
-                    getattr(line.description, name_attr) for line in msa.lines
+                    getattr(line.description, name_attr)
+                    if getattr(line.description, name_attr) in interaction_map
+                    else getattr(line.description, fallback_name_attr)
+                    for line in msa.lines
                 )
             } for msa in (msa1_known, msa2_known)
         )
@@ -371,9 +395,7 @@ class PairedMSA(MSA):
         species_pairs = [query_pair] + sorted(species_pairs)
         msa_lines, matched_species = [], set()
         for _sp1, _sp2 in species_pairs:
-            _lines1, _lines2 = (
-                d[k] for d, k in zip((species_msa1, species_msa2), (_sp1, _sp2))
-            )
+            _lines1, _lines2 = species_msa1[_sp1], species_msa2[_sp2]
             if any(
                 sA in interaction_map.get(sB, []) 
                 for sA, sB in zip((_sp1, _sp2), (_sp2, _sp1))
@@ -392,7 +414,10 @@ class PairedMSA(MSA):
             idx1, idx2 = (
                 [
                     i for i, line in enumerate(lines) 
-                    if getattr(line.description, name_attr) not in matched_species
+                    if not any(
+                        getattr(line.description, _attr) in matched_species 
+                        for _attr in (name_attr, fallback_name_attr)
+                    )
                 ] for lines in (msa1.lines, msa2.lines)
             )
             msa1, msa2 = (msa._filter_by_index(idx) for idx, msa in zip((idx1, idx2), (msa1, msa2)))
