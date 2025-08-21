@@ -134,7 +134,7 @@ def organism_interactions(
         os.path.join(cache, filename) for filename in ("interactions.json.gz", "name-to-ncbi.json")
     )
 
-    if test_mode:
+    if test_mode and len(ORGANISM_INTERACTIONS) == 0:
         print_err("Building organism interaction lookup table and loading into memory...", flush=True)
         ORGANISM_INTERACTIONS.update(
             _create_data_json(

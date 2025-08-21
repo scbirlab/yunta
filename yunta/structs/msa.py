@@ -362,9 +362,12 @@ class PairedMSA(MSA):
                 raise e
         else:
             query_name_attr = name_attr
+        
         #Get the matches
         query_pair = tuple(
-            getattr(list(msa.lines)[0].description, query_name_attr) 
+            getattr(msa.lines[0].description, name_attr)
+            if getattr(msa.lines[0].description, name_attr) in interaction_map
+            else getattr(msa.lines[0].description, fallback_name_attr)
             for msa in (msa1_known, msa2_known)
         )
 
@@ -372,7 +375,10 @@ class PairedMSA(MSA):
             {
                 _species: [
                     line for line in msa.lines 
-                    if _species in (getattr(line.description, name_attr), getattr(line.description, fallback_name_attr))
+                    if _species in set(
+                        getattr(line.description, _attr) 
+                        for _attr in (name_attr, fallback_name_attr)
+                    )
                 ] for _species in set(
                     getattr(line.description, name_attr)
                     if getattr(line.description, name_attr) in interaction_map
@@ -386,12 +392,13 @@ class PairedMSA(MSA):
             species_pairs.remove(query_pair)
         except KeyError:
             sep = '\n\t- '
-            raise KeyError(
+            print_err(
                 f"""
                 Query species {query_pair} is not among the shared species in the MSAs:" 
                     - {sep.join(map(str, sorted(species_pairs)))}
                 """
             )
+            raise KeyError(f"Query species {':'.join(query_pair)} is not among the shared species in the MSAs")
         species_pairs = [query_pair] + sorted(species_pairs)
         msa_lines, matched_species = [], set()
         for _sp1, _sp2 in species_pairs:
