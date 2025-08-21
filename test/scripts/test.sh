@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
-set -x
+set -euox pipefail
 
 INPUT_INTER1=test/inputs/Q38361_D29_integrase.a3m
 INPUT_INTER2=test/inputs/P9WGF1_Mtb_Mmr.a3m
@@ -14,6 +13,21 @@ FILE2=test/outputs/file2.txt
 mkdir -p $(dirname $FILE1)
 echo "$INPUT1" > $FILE1
 echo "${INPUTB[@]}" | tr ' ' $'\n' > $FILE2
+
+# interspecies test
+INPUT_IS1=test/inputs/crypto/Q5CPK5_CRYPI.a3m
+INPUT_IS2=test/inputs/human/EZRI_HUMAN.a3m
+yunta dca-single "$INPUT_IS1" \
+    --msa2 "$INPUT_IS2" \
+    --interspecies \
+    --apc \
+    --output test/outputs/dca-single-interspecies.tsv \
+    --plot test/outputs/dca-single-interspecies
+yunta rf2t-single "$INPUT_IS1" \
+    --msa2 "$INPUT_IS2" \
+    --interspecies \
+    --output test/outputs/rf2t-single-interspecies.tsv \
+    --plot test/outputs/rf2t-single-interspecies
 
 yunta dca-single $INPUT_INTER1 -2 $INPUT_INTER2 \
     --apc \
