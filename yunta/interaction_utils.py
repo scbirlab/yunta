@@ -131,7 +131,8 @@ def organism_interactions(
     use_cache = use_cache or (USE_CACHE == "True")
     test_mode = (TEST_MODE == "1") or not use_cache
     _data_json_path, _name2ncbi_path = (
-        os.path.join(cache, filename) for filename in ("interactions.json.gz", "name-to-ncbi.json")
+        os.path.join(cache, filename) 
+        for filename in ("interactions.json.gz", "name-to-ncbi.json")
     )
 
     if test_mode and len(ORGANISM_INTERACTIONS) == 0:
@@ -146,7 +147,19 @@ def organism_interactions(
         )
     else:
         if not os.path.exists(CACHE_PATH):
-            os.makedirs(CACHE_PATH)
+            try:
+                os.makedirs(CACHE_PATH)
+            except OSError:
+                if len(ORGANISM_INTERACTIONS) == 0:
+                    print_err("File system not writable; building organism interaction lookup table and loading into memory...", flush=True)
+                    ORGANISM_INTERACTIONS.update(
+                        _create_data_json(
+                            _data_csv_path, 
+                            _data_json_path, 
+                            _name2ncbi_path, 
+                            test_mode=test_mode,
+                        )
+                    )
         if not os.path.exists(_data_json_path):
             print_err("Organism interaction lookup table not yet built; building...", flush=True)
             _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
