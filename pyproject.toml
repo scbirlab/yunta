@@ -1,6 +1,6 @@
 [project]
 name = "yunta"
-version = "0.0.6"
+version = "0.0.6.post1"
 authors = [
   { name="Eachan Johnson", email="eachan.johnson@crick.ac.uk" },
 ]
