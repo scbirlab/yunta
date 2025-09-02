@@ -160,6 +160,7 @@ def organism_interactions(
                             test_mode=test_mode,
                         )
                     )
+                return ORGANISM_INTERACTIONS
         if not os.path.exists(_data_json_path):
             print_err("Organism interaction lookup table not yet built; building...", flush=True)
             _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
