@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euox pipefail
+set -eox pipefail
 
 INPUT_INTER1=test/inputs/Q38361_D29_integrase.a3m
 INPUT_INTER2=test/inputs/P9WGF1_Mtb_Mmr.a3m
@@ -57,7 +57,7 @@ then
     exit 1
 fi
 
-if [ -z $1 ]
+if [ -z "$1" ]
 then
     yunta rf2t-single $INPUT1 -2 $INPUT2 \
         -o test/outputs/rf2t-single.tsv \
