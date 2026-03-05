@@ -49,6 +49,16 @@ jobs:
           path: junit/test-results-${{ matrix.python-version }}.xml
       # Use always() to always run this step to publish test results when there are test failures
       if: ${{ always() }}
+    - name: Test interaction database
+      run: |
+        pytest yunta/tests/test_interaction_utils.py -v \
+          --junitxml=tests/test-results-interaction.xml
+    - name: Upload interaction test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-interaction-results-${{ matrix.python-version }}
+        path: tests/test-results-interaction.xml
+      if: ${{ always() }}
     - name: Test with scripts
       run: |
         set -x
