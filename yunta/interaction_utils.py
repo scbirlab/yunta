@@ -10,8 +10,14 @@ import gzip
 import os
 
 from carabiner import cast, print_err
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 import pandas as pd
 from tqdm.auto import tqdm
+
+try:
+    _YUNTA_VERSION = _pkg_version("yunta")
+except PackageNotFoundError:
+    _YUNTA_VERSION = "unknown"
 
 _INTERACTION_FILE_LOADED: bool = False
 ORGANISM_INTERACTIONS: dict = {}
@@ -94,25 +100,34 @@ def _create_data_json(
                 sort_keys=True, 
                 indent=4,
             )
-    additional = defaultdict(set)
-    for key, value in tqdm(interaction_map["name"].items()):
+    # Build reverse mapping: NCBI ID → set of normalised names
+    ncbi_to_name = defaultdict(set)
+    for name, ncbi_ids in name_to_ncbi.items():
+        for ncbi_id in ncbi_ids:
+            ncbi_to_name[ncbi_id].add(name)
+
+    # Enrich name-index values with the NCBI IDs of their named interactors.
+    # This enables cross-matching: a name-based lookup also returns NCBI IDs,
+    # so join_msa can pair a name-keyed sequence against an NCBI-keyed one.
+    for key in list(interaction_map["name"].keys()):
         vals_to_add = set()
-        for v in value:
-            try:
-                ncbi_keys = name_to_ncbi[v]
-            except KeyError:
-                pass
-            else:
-                vals_to_add |= ncbi_keys
+        for v in list(interaction_map["name"][key]):
+            vals_to_add |= name_to_ncbi.get(v, set())
         interaction_map["name"][key] |= vals_to_add
-        try:
-            ncbi_keys = name_to_ncbi[key]
-        except KeyError:
-            pass
-        else:
-            for ncbi_key in ncbi_keys:
-                additional[ncbi_key] = interaction_map["name"][key]
-    interaction_map["name"].update(additional)
+
+    # Enrich ncbi-index values with the normalised names of their NCBI interactors.
+    # This enables cross-matching in the other direction.
+    for key in list(interaction_map["ncbi"].keys()):
+        vals_to_add = set()
+        for v in list(interaction_map["ncbi"][key]):
+            vals_to_add |= ncbi_to_name.get(v, set())
+        interaction_map["ncbi"][key] |= vals_to_add
+
+    # Merge the strain-specific NCBI entries into the combined map.
+    # Using the ncbi index (not the name-merged values) preserves specificity:
+    # NCBI:83332 only lists the interactions explicitly recorded for that strain,
+    # not those of other strains that share the same normalised species name.
+    interaction_map["name"].update(interaction_map["ncbi"])
     if not test_mode:
         interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
     if test_mode:
@@ -131,8 +146,11 @@ def organism_interactions(
     use_cache = use_cache or (USE_CACHE == "True")
     test_mode = (TEST_MODE == "1") or not use_cache
     _data_json_path, _name2ncbi_path = (
-        os.path.join(cache, filename) 
-        for filename in ("interactions.json.gz", "name-to-ncbi.json")
+        os.path.join(cache, filename)
+        for filename in (
+            f"interactions-{_YUNTA_VERSION}.json.gz",
+            f"name-to-ncbi-{_YUNTA_VERSION}.json",
+        )
     )
 
     if test_mode and len(ORGANISM_INTERACTIONS) == 0:
