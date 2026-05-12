@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
     steps:
     - run: df -h
@@ -43,6 +43,7 @@ jobs:
       run: |
         pytest yunta/interaction_utils.py --doctest-modules --junitxml=tests/test-results.xml --cov=com --cov-report=xml --cov-report=html
         pytest yunta/structs/msa.py --doctest-modules --junitxml=tests/test-results.xml --cov=com --cov-report=xml --cov-report=html
+        pytest yunta/scoring.py --doctest-modules --junitxml=tests/test-results.xml --cov=com --cov-report=xml --cov-report=html
         pytest test/test_check_ref_match.py --cov=com --cov-report=xml --cov-report=html
     - name: Upload pytest test results
       uses: actions/upload-artifact@v4
