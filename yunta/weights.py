@@ -31,7 +31,7 @@ def get_model_weights(
     files_to_keep = (os.path.join(".", os.path.basename(weight_filename)), "LICENSE")
 
     if not os.path.exists(weight_filename):
-        print_err(f"Weights file {weight_filename} does not exist. Downloading...")
+        print_err(f"[INFO]  Weights file {weight_filename} does not exist. Downloading...")
         if not os.path.exists(weight_dir):
             os.makedirs(weight_dir)
         r = requests.get(_WEIGHTS_URL, stream=True)
@@ -44,11 +44,11 @@ def get_model_weights(
                         f.flush()
                         os.fsync(f.fileno())
         except KeyboardInterrupt as e:
-            print_err(f"Deleting {temp_file}!")
+            print_err(f"[INFO] Deleting {temp_file}!")
             os.remove(temp_file)
             raise e
         with tarfile.open(temp_file) as tar:
-            print_err(f"Extracting weights from {temp_file} to {weight_dir}...")
+            print_err(f"[INFO  Extracting weights from {temp_file} to {weight_dir}...")
             tar.extractall(
                 path=weight_dir, 
                 members=files_to_keep, 
@@ -59,8 +59,8 @@ def get_model_weights(
         for filename in files_to_keep:
             source = os.path.join(tardir, filename)
             destination = os.path.join(weight_dir, filename)
-            print_err(f"Moving {source} to {destination}.")
+            print_err(f"[INFO] Moving {source} to {destination}.")
             os.rename(source, destination)
 
-    print_err(f"Model weights located at {weight_dir}.")        
+    print_err(f"[INFO] Model weights located at {weight_dir}.")        
     return os.path.dirname(weight_dir)  # AF2 expects the parent dir of "params" dir

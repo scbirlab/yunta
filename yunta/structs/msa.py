@@ -1,15 +1,12 @@
 """Data structures for multiple sequence alignments."""
 
 from typing import Iterable, List, Mapping, Tuple, Optional, Union
-
 from copy import deepcopy
+from dataclasses import asdict, dataclass, field, fields
 from io import TextIOWrapper
 from itertools import dropwhile, product
 import sys
 
-from dataclasses import asdict, dataclass, field, fields
-
-from bioino import FastaCollection
 from carabiner import cast, print_err
 from tqdm.auto import tqdm
 
@@ -23,6 +20,23 @@ __BLOCK_GAPS__ = "__BLOCK_GAPS__"
 
 @dataclass
 class MSAName:
+    """Parsed MSA sequence name (header line).
+
+    Splits UniProt-style pipe-delimited names into database, unique ID,
+    and entry name. Non-pipe-delimited headers get sentinel values.
+
+    Examples
+    ========
+    >>> MSAName('>sp|P07807|DYR_YEAST').database
+    'sp'
+    >>> MSAName('>sp|P07807|DYR_YEAST').unique_id
+    'P07807'
+    >>> MSAName('>sp|P07807|DYR_YEAST').entry_name
+    'DYR_YEAST'
+    >>> MSAName('>UniRef90_A0A1B2').unique_id
+    '__NO_ENTRY_ID__'
+
+    """
     name: str
     input_name: str = field(init=False)
     database: str = field(init=False)
@@ -50,6 +64,26 @@ class MSAName:
 
 @dataclass
 class MSADescription:
+    """Parsed MSA sequence description line.
+
+    Extracts species identity from UniProt-style description fields.
+    Prefers the NCBI taxon ID (``OX=``), falls back to ``TaxID=``,
+    then to the species name (``OS=``), then to ``-1`` if none present.
+
+    >>> MSADescription('Gene OS=Escherichia coli OX=562 GN=x PE=1 SV=1').species_id
+    'NCBI:562'
+    >>> MSADescription('Gene OS=Mycobacterium tuberculosis TaxID=1773 GN=y').species_id
+    'NCBI:1773'
+    >>> MSADescription('Gene OS=Borrelia burgdorferi GN=z').species_id
+    'Name:Borrelia burgdorferi'
+    >>> MSADescription('Gene GN=w PE=4 SV=1').species_id
+    -1
+    >>> MSADescription('Gene GN=w PE=4 SV=1').generic_species_name is None
+    True
+    >>> MSADescription('Gene OS=Escherichia coli OX=562 GN=x PE=1 SV=1').generic_species_name
+    'Escherichia coli'
+
+    """
     description: str
     species_id: str = field(init=False)
     prefix: str = field(init=False)
@@ -76,13 +110,13 @@ class MSADescription:
         if "OX" in self.info:  # NCBI identifier. Doesn't exist for everything
             species_id = f"NCBI:{self.info['OX']}"
         elif "TaxID" in self.info:
-            species_id = f"TaxID:{self.info['TaxID']}"
+            species_id = f"NCBI:{self.info['TaxID']}"
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
         else:
             species_id = -1
             if self.description != '__BLOCK_GAPS__' and self._verbose:
-                print_err(f"MSA has no species info. Description string: {self.description.rstrip()}")
+                print_err(f"[WARN] MSA has no species info. Description string: {self.description.rstrip()}")
         self.species_id = species_id
         if species_id == -1:
             self.generic_species_name = None 
@@ -98,6 +132,26 @@ class MSADescription:
 
 @dataclass
 class MSALine:
+    """A single aligned sequence with its header metadata.
+
+    Lowercase letters (insertions in A3M format) are stripped from the
+    sequence. Gap fraction is computed over the uppercase-only sequence.
+
+    Examples
+    ========
+    >>> line = MSALine(
+    ...     name='>sp|P12345|GENE_ECOLI',
+    ...     description='Gene OS=Escherichia coli OX=562 GN=x PE=1 SV=1',
+    ...     sequence='MARNDagctagQE--W',
+    ... )
+    >>> line.sequence
+    'MARNDQE--W'
+    >>> line.gap_fraction
+    0.2
+    >>> len(line)
+    10
+
+    """
     name: str
     description: str
     sequence: str
@@ -177,6 +231,7 @@ class MSA:
 
     @classmethod
     def from_file(cls, file: Union[str, TextIOWrapper]) -> 'MSA':
+        from bioino import FastaCollection
         collection = list(FastaCollection.from_file(file).sequences)
         # print(collection[0])
         return cls(MSALine(**asdict(seq)) for seq in tqdm(collection))
@@ -187,11 +242,12 @@ class MSA:
     def neff(self, identity_threshold: float = .62) -> int:
         """Calculate the number of effective sequences.
         """
+        import numpy as np
         remaining_msa = deepcopy(self.sequence_token_ids)
         threshold = float(self.seq_length * identity_threshold)
         n_effective = 0
         print_err(
-            f"Clustering at identity threshold: {identity_threshold} ",
+            f"[INFO] Clustering at identity threshold: {identity_threshold} ",
             f"({threshold}/{self.seq_length} positions): "
         )
         while len(remaining_msa) > 0:
@@ -199,18 +255,11 @@ class MSA:
                 f"\r:: Neff = {n_effective} | remaining to cluster: {len(remaining_msa)}", 
                 end='',
             )
-            first_remaining_msa = remaining_msa[0]
-            msa_diff = [
-                sum(
-                    (other - b) != 0 for other, b in zip(row, first_remaining_msa)
-                ) for row in remaining_msa
-            ]
-            remaining_msa = [
-                line for diff, line in zip(msa_diff, remaining_msa) 
-                if diff > threshold
-            ]
+            arr = np.array(remaining_msa, dtype=np.int8)
+            diffs = np.sum(arr != arr[0], axis=1)
+            remaining_msa = arr[diffs > threshold].tolist()
             n_effective += 1
-        print_err()
+        print_err(f"\n[INFO] Neff = {n_effective}")
         return n_effective
 
     def _filter_by_index(self, indices=Iterable[int]) -> 'MSA':
@@ -230,11 +279,11 @@ class MSA:
                         ],
                     )
         final_len = len(new_copy)
-        print_err(f"Filtered out {start_len - final_len}/{start_len} lines from MSA.")
+        print_err(f"[INFO] Filtered out {start_len - final_len}/{start_len} lines from MSA.")
         return new_copy
 
     def filter_by_known_species(self) -> 'MSA':
-        print_err("Filtering MSA by known species.")
+        print_err("[INFO] Filtering MSA by known species.")
         indices_to_keep = (
             i for i, line in enumerate(self.lines) 
             if line.description.species_id != -1
@@ -243,7 +292,7 @@ class MSA:
 
     def filter_by_gap_fraction(self, max_gap_fraction: float = 1.) -> 'MSA':
         if max_gap_fraction < 1.:
-            print_err(f"Filtering MSA by gap fraction < {max_gap_fraction}.")
+            print_err(f"[INFO] Filtering MSA by gap fraction < {max_gap_fraction}.")
             indices_to_keep = (
                 i for i, line in enumerate(self.lines)
                 if line.gap_fraction <= max_gap_fraction
@@ -275,30 +324,57 @@ class PairedMSA(MSA):
 
     @staticmethod
     def _check_ref_match(
-        msa1: MSA, 
+        msa1: MSA,
         msa2: MSA,
         interaction_map: Optional[Mapping[str, Iterable[str]]] = None,
         name_attr: str = "species_id"
     ) -> None:
+        """Validate that the reference sequences (first lines) of two MSAs
+        are from organisms that can interact.
+
+        Passes silently on a valid pair.
+        
+        Raises
+        ======
+        ``AttributeError``
+            If neither organism is in the other's allowed set
+        ``ValueError`` if a species ID is unknown (``-1``).
+
+        ``interaction_map`` is checked in both directions: the pair is valid
+        if ``id2`` is in ``map[id1]`` OR ``id1`` is in ``map[id2]``.
+
+        """
         id1, id2 = (
             getattr(msa.lines[0].description, name_attr) for msa in (msa1, msa2)
         )
+        if id1 == -1 or id2 == -1:
+            raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
         if interaction_map is not None:
             allowed_id2 = interaction_map.get(id1, [])
             allowed_id1 = interaction_map.get(id2, [])
-        else:
-            allowed_id2 = [id2]
-        if not id2 in allowed_id2 and not id1 in allowed_id1:
-            raise AttributeError(
-                f"""
-                MSA reference species do not match: 
-                
-                ID1: {id1}; allowed: {allowed_id1}
-                ID2: {id2}; allowed: {allowed_id2}
+        
+            if not id2 in allowed_id2 and not id1 in allowed_id1:
+                raise AttributeError(
+                    f"""
+                    MSA reference species do not match: 
+                    
+                    ID1: {id1}; allowed: {allowed_id1}
+                    ID2: {id2}; allowed: {allowed_id2}
 
-                """)
-        if id1 == -1 or all(_id2 == -1 for _id2 in allowed_id2):
-            raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
+                    """
+                )
+            if id1 == -1 or all(_id2 == -1 for _id2 in allowed_id2):
+                raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
+        else:
+            if id1 != id2:
+                raise AttributeError(
+                    f"""
+                    MSA reference species do not match, and no interaction map provided: 
+                    
+                    ID1: {id1}; ID2: {id2}
+
+                    """
+                )
         return None
 
     @staticmethod
@@ -394,7 +470,7 @@ class PairedMSA(MSA):
             sep = '\n\t- '
             print_err(
                 f"""
-                Query species {query_pair} is not among the shared species in the MSAs:" 
+                [ERROR] Query species {query_pair} is not among the shared species in the MSAs:" 
                     - {sep.join(map(str, sorted(species_pairs)))}
                 """
             )
@@ -403,9 +479,24 @@ class PairedMSA(MSA):
         msa_lines, matched_species = [], set()
         for _sp1, _sp2 in species_pairs:
             _lines1, _lines2 = species_msa1[_sp1], species_msa2[_sp2]
+            # Name-level fallback keys for cross-strain matching
+            # (e.g. NCBI:10710 → "Enterobacteria phage lambda" matches "Escherichia coli")
+            if _lines1:
+                _sp1_name = _lines1[0].description.generic_species_name
+            else:
+                _sp1_name = _sp1
+            if _lines2:
+                _sp2_name = _lines2[0].description.generic_species_name
+            else:
+                _sp2_name = _sp2
             if any(
-                sA in interaction_map.get(sB, []) 
-                for sA, sB in zip((_sp1, _sp2), (_sp2, _sp1))
+                (
+                    sA in interaction_map.get(sB, []) 
+                    or sA in interaction_map.get(sB_name, [])
+                ) for (sA, sB, sB_name) in [
+                    (_sp1, _sp2, _sp2_name), 
+                    (_sp2, _sp1, _sp1_name),
+                ]
             ):
                 line1, line2 = _lines1[0], _lines2[0]
                 msa_lines.append(

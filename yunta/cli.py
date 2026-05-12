@@ -8,16 +8,9 @@ from carabiner import cast, print_err
 from carabiner.cast import flatten
 from carabiner.cliutils import clicommand, CLIOption, CLICommand, CLIApp
 
-from . import __version__
+from . import appname, __version__
 from .io import write_metrics
-from .plots import plot_matrix
-from .screening import (
-    dca_one_vs_many, 
-    dca_many_vs_many, 
-    model_one_vs_many, 
-    model_many_vs_many, 
-    rf2track_one_vs_many,
-)
+
 
 def _load_msa_list(*args):
     args = [a[0] if isinstance(a, list) else a for a in args]
@@ -28,6 +21,7 @@ def _load_msa_list(*args):
 
 def _plot_results(results, result_interaction, metric, 
                   output_dir: str = '.', *args, **kwargs) -> None:
+    from .plots import plot_matrix
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     filename_prefix = os.path.join(output_dir, metric.ID)
@@ -55,6 +49,7 @@ def _msa_from_list_file(args: Namespace) -> tuple:
 
 @clicommand(message="Making RosettaFold-2track prediction with the following parameters")
 def _rf2t_single(args: Namespace) -> None:
+    from .screening import rf2track_one_vs_many
 
     msa1, msa2 = _msa_from_list_file(args)
 
@@ -77,6 +72,7 @@ def _rf2t_single(args: Namespace) -> None:
 
 @clicommand(message="Calculating DCA for a pair of MSAs with the following parameters")
 def _dca_single(args: Namespace) -> None:
+    from .screening import dca_one_vs_many
 
     msa1, msa2 = _msa_from_list_file(args)
 
@@ -98,7 +94,7 @@ def _dca_single(args: Namespace) -> None:
 
 @clicommand(message="Calculating DCA between pairs of MSAs with the following parameters")
 def _dca_many_vs_many(args: Namespace) -> None:
-
+    from .screening import dca_many_vs_many
     msa1, msa2 = _msa_from_list_file(args)
 
     outputs = dca_many_vs_many(
@@ -120,7 +116,7 @@ def _dca_many_vs_many(args: Namespace) -> None:
 
 @clicommand(message="Modelling one PPI with the following parameters")
 def _af2_single(args: Namespace) -> None:
-
+    from .screening import model_one_vs_many
     msa1, msa2 = _msa_from_list_file(args)
 
     metric = model_one_vs_many(
@@ -142,7 +138,7 @@ def _af2_single(args: Namespace) -> None:
 
 @clicommand(message="Modelling sets of PPIs with the following parameters")
 def _af2_many_vs_many(args: Namespace) -> None:
-
+    from .screening import model_many_vs_many
     msa1, msa2 = _msa_from_list_file(args)
 
     metrics = model_many_vs_many(
@@ -241,7 +237,7 @@ def main() -> None:
                           options=[inputs_list, inputs_list2, list_file, interspecies, output, params, recycles, plot])
 
     app = CLIApp(
-        "yunta",
+        appname,
         version=__version__,
         description="Screening protein-protein interactions using DCA, RosettaFold-2track, and AlphaFold2.",
         commands=[dca_single, dca_many, rf2t_single, af2_single, af2_many],

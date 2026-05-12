@@ -14,13 +14,9 @@ import numpy as np
 from numpy.typing import ArrayLike
 from tqdm.auto import tqdm
 
-from .io import save_design
-from .modelling import make_model_runner
-from .scoring import score_ppi
-from .src_speedppi.alphafold import protein, residue_constants
-from .src_speedppi.alphafold.data import foldonly
 from .structs.metrics import DCAMetrics, ModelMetrics, RF2TMetrics
 from .structs.msa import MSA, PairedMSA
+
 
 def _pair_msas(
     msa1: MSA, 
@@ -52,10 +48,10 @@ def _calculate_interaction_blocks(
     split_size = chunksize
     if n_msa_columns > chunksize:
 
-        print_err(f"INFO: Splitting MSA with {n_msa_columns} columns into pairs of {split_size}-column chunks.")
+        print_err(f"[INFO] Splitting MSA with {n_msa_columns} columns into pairs of {split_size}-column chunks.")
         chunks = np.split(token_ids, list(range(split_size, n_msa_columns, split_size)), axis=-1)
         n_chunks = len(chunks)
-        print_err(f"INFO: Split MSA with {n_msa_columns} columns into {n_chunks} x {split_size}-column chunks.")
+        print_err(f"[INFO] Split MSA with {n_msa_columns} columns into {n_chunks} x {split_size}-column chunks.")
 
         result = np.zeros((n_msa_columns, n_msa_columns), dtype=np.float32)
         for (i, chunk_i), (j, chunk_j) in product(enumerate(chunks), enumerate(chunks)):
@@ -87,6 +83,8 @@ def _calculate_interaction_blocks(
 
 
 def _get_af2_features(paired_msa: PairedMSA) -> Dict[str, Union[str, int]]:
+
+    from .src_speedppi.alphafold.data import foldonly
 
     msa_seqs = paired_msa.sequences()
     # The msas must be str representations of the blocked+paired MSAs here
@@ -175,7 +173,7 @@ def rf2track_one_vs_many(
         msa_file2 = [msa_file2]
     msa1 = MSA.from_file(msa_file1)
     results = []
-    print_err(f"Calculating contact matrix for {msa_file1} against {len(msa_file2)} MSAs...")
+    print_err(f"[INFO] Calculating contact matrix for {msa_file1} against {len(msa_file2)} MSAs...")
     from rf2t_micro.predict_msa import Predictor
     import torch
     torch.cuda.empty_cache()
@@ -261,7 +259,7 @@ def dca_one_vs_many(
         msa_file2 = [msa_file2]
     msa1 = MSA.from_file(msa_file1)
     results = []
-    print_err(f"Calculating DCA for {msa_file1} against {len(msa_file2)} MSAs...")
+    print_err(f"[INFO] Calculating DCA for {msa_file1} against {len(msa_file2)} MSAs...")
     for msa2 in tqdm(msa_file2):
         if msa2 is not None:
             msa2 = MSA.from_file(msa2)
@@ -288,10 +286,10 @@ def dca_many_vs_many(
     results = []
     # msa_files1 = cast(msa_files1, to=lost)
     if msa_files2 is None:
-        print_err("No second set of MSAs provided,"
+        print_err("[WARN] No second set of MSAs provided,"
                   " so screening all pairwise interactions from the first set.")
         msa_files2 = [f for f in msa_files1]
-    print_err(f"Screening {len(msa_files1)} MSAs against {len(msa_files2)} MSAs...")
+    print_err(f"[INFO] Screening {len(msa_files1)} MSAs against {len(msa_files2)} MSAs...")
     for msa_file1 in tqdm(msa_files1):
         results += dca_one_vs_many(
                 msa_file1=msa_file1,
@@ -316,6 +314,8 @@ def model_protein_interaction(
     """Model a single PPI using a pair of MSA files.
     
     """
+    from .modelling import make_model_runner
+
     if seed is None:
         seed = random.randrange(sys.maxsize)
     if model_runner is None:
@@ -330,14 +330,14 @@ def model_protein_interaction(
     print_err(paired_msa)
 
     feature_dict = _get_af2_features(paired_msa)
-    print_err(f"Modelling pair {feature_dict['ID']}...")
+    print_err(f"[INFO] Modelling pair {feature_dict['ID']}...")
     # Run the model - on GPU
     t0 = time()
     #TODO: Swap the AlphaFold2 protein modelling for OpenFold (faster? PyTorch, open source)
     processed_feature_dict = model_runner.process_features(feature_dict, 
                                                            random_seed=seed)
     prediction_result = model_runner.predict(processed_feature_dict)
-    print_err(f"It took {time() - t0} s to predict the interaction.")
+    print_err(f"[INFO] It took {time() - t0} s to predict the interaction.")
     
     return paired_msa, feature_dict, processed_feature_dict, prediction_result
 
@@ -355,9 +355,15 @@ def evaluate_and_save_model(
     """Evalulate a model and save PDB.
     
     """
-    plddt_b_factors = np.repeat(prediction_result['plddt'][:, np.newaxis], 
-                                residue_constants.atom_type_num, 
-                                axis=-1)
+    from .io import save_design
+    from .scoring import score_ppi
+    from .src_speedppi.alphafold import protein, residue_constants
+
+    plddt_b_factors = np.repeat(
+        prediction_result['plddt'][:, np.newaxis], 
+        residue_constants.atom_type_num, 
+        axis=-1,
+    )
     # Add the predicted LDDT in the b-factor column.
     # Note that higher predicted LDDT value means higher model confidence.
     unrelaxed_protein = protein.from_prediction(
@@ -375,14 +381,14 @@ def evaluate_and_save_model(
 
     #Save if pDockQ > t
     if force_save or pdockq > pdockq_t:
-        print_err(f"Saving {feature_dict['ID']} structure with pDockQ = {pdockq:.2f} as {filename}.")
+        print_err(f"[INFO] Saving {feature_dict['ID']} structure with pDockQ = {pdockq:.2f} as {filename}.")
         pdb, _ = protein.to_pdb(unrelaxed_protein)
         save_design(pdb, filename, chain_a_length)
     else:
-        print_err(f"Skipping saving {feature_dict['ID']} structure with pDockQ = {pdockq:.2f}.")
+        print_err(f"[WARN] Skipping saving {feature_dict['ID']} structure with pDockQ = {pdockq:.2f}.")
     
     return ModelMetrics(ID=feature_dict['ID'], n_contacts=n_interface_contacts, 
-                        mean_interfact_plddt=avg_interface_plddt, pdockq=pdockq)
+                        mean_interface_plddt=avg_interface_plddt, pdockq=pdockq)
 
 
 def build_evaluate_and_save_model(
@@ -437,6 +443,8 @@ def model_one_vs_many(
     *args, **kwargs
 ) -> List[ModelMetrics]:
 
+    from .modelling import make_model_runner
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -447,7 +455,7 @@ def model_one_vs_many(
         msa_file2 = [msa_file2]
     msa1 = MSA.from_file(msa_file1)
     metrics = []
-    print_err(f"Running {msa_file1} against {len(msa_file2)} MSAs...")
+    print_err(f"[INFO] Running {msa_file1} against {len(msa_file2)} MSAs...")
     for msa2 in tqdm(msa_file2):
         if msa2 is not None:
             msa2 = MSA.from_file(msa2)
@@ -480,16 +488,17 @@ def model_many_vs_many(
     model_runner: Optional = None,
     *args, **kwargs
 ) -> List[ModelMetrics]:
+    from .modelling import make_model_runner
 
     model_runner = make_model_runner(*args, **kwargs)
     metrics = []
     
     msa_files1 = list(msa_files1)
     if msa_files2 is None:
-        print_err("No second set of MSAs provided,"
+        print_err("[WARN] No second set of MSAs provided,"
                   " so screening all pairwise interactions from the first set.")
         msa_files2 = [f for f in msa_files1]
-    print_err(f"Screening {len(msa_files1)} MSAs against {len(msa_files2)} MSAs...")
+    print_err(f"[INFO] Screening {len(msa_files1)} MSAs against {len(msa_files2)} MSAs...")
     for msa_file1 in tqdm(msa_files1):
         metrics += model_one_vs_many(
                 msa_file1=msa_file1,

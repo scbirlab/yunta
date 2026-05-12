@@ -1,12 +1,12 @@
 [project]
 name = "yunta"
-version = "0.0.6.post2"
+version = "0.0.7"
 authors = [
   { name="Eachan Johnson", email="eachan.johnson@crick.ac.uk" },
 ]
 description = "Predicting protein-protein interactions and structures from multiple sequence alignments."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.14"
 license = {file = "LICENSE"}
 keywords = ["science", "biology", "systems biology", "biochemistry", "machine learning", "analysis", "deep learning", "alphafold2", "rosettafold"]
 
@@ -23,32 +23,53 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3 :: Only",
 ]
 
-dependencies = [ 
-  "absl-py",
+dependencies = [
   "bioino",
   "biopython",
-  "carabiner-tools[mpl,pd]>=0.0.4",
-  "dm-haiku==0.0.12",
-  "dm-tree",
-  "jax<=0.4.35",
-  "ml-collections==0.1.0",
-  "openpyxl==3.1.0", 
-  "rf2t-micro",
+  "carabiner-tools[mpl,pd]>=0.0.5.post3",
+  "openpyxl==3.1.0",
   "requests",
-  "tensorflow==2.17",
-  "tensorrt",
   "torch>=2.3",
   "torchvision",
   "tqdm",
 ]
 
 [project.optional-dependencies]
-cuda12 = ["jax[cuda12]<=0.4.35"]
-cuda12_local = ["jax[cuda12_local]<=0.4.35"]
-cuda11 = ["jax[cuda11]<=0.4.35"]
+af_base = [
+  "absl-py",
+  "dm-haiku==0.0.12",
+  "dm-tree",
+  "ml-collections==0.1.0",
+  "tensorflow>=2.17",
+  "tensorrt",
+]
+af = [
+  "yunta[af_base]",
+  "jax<=0.4.35",
+]
+af_cuda12 = [
+  "yunta[af_base]",
+  "jax[cuda12]<=0.4.35",
+]
+af_cuda12_local = [
+  "yunta[af_base]",
+  "jax[cuda12_local]<=0.4.35",
+]
+af_cuda11 = [
+  "yunta[af_base]",
+  "jax[cuda11]<=0.4.35",
+]
+rf2t = [
+  "rf2t-micro",
+]
+dev = [
+  "pytest",
+  "flake8",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/scbirlab/yunta"
@@ -67,3 +88,6 @@ package-data = {"yunta" = ["data/*.csv"]}
 # https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
 requires = ["setuptools>=43.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[test]
+deps = ["pytest>=7.4", "pytest-cov", "yunta[dev]"]

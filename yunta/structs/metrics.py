@@ -66,7 +66,7 @@ class ModelMetrics:
     uniprot_id_1: str = field(init=False)
     uniprot_id_2: str = field(init=False)
     n_contacts: int
-    mean_interfact_plddt: float
+    mean_interface_plddt: float
     pdockq: float
 
     def __post_init__(self):

@@ -5,8 +5,6 @@ from typing import Optional, Tuple
 import numpy as np
 from numpy.typing import ArrayLike
 
-from .src_speedppi.alphafold import protein
-
 def _euclidean_dist(x: ArrayLike, 
                     y: Optional[ArrayLike] = None) -> float:
     if y is None:
@@ -22,6 +20,7 @@ def _pdockq(avg_interface_plddt: float, n_interface_contacts: int):
 
     Examples
     --------
+    >>> import numpy as np; np.set_printoptions(legacy="1.25")
     >>> _pdockq(.1, 3)
     0.018259536451737016
     >>> _pdockq(.9, 100)
@@ -64,6 +63,7 @@ def score_ppi(unrelaxed_protein, plddt, chain_a_length: int) -> Tuple[float, flo
     """Score the PPI.
 
     """
+    from .src_speedppi.alphafold import protein
 
     #Get the pdb and Cβ coords
     _, cβ_coords = protein.to_pdb(unrelaxed_protein)
