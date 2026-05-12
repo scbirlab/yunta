@@ -73,7 +73,7 @@ class MSADescription:
     >>> MSADescription('Gene OS=Escherichia coli OX=562 GN=x PE=1 SV=1').species_id
     'NCBI:562'
     >>> MSADescription('Gene OS=Mycobacterium tuberculosis TaxID=1773 GN=y').species_id
-    'TaxID:1773'
+    'NCBI:1773'
     >>> MSADescription('Gene OS=Borrelia burgdorferi GN=z').species_id
     'Name:Borrelia burgdorferi'
     >>> MSADescription('Gene GN=w PE=4 SV=1').species_id
