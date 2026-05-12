@@ -111,7 +111,7 @@ def _create_data_json(
             pass
         else:
             for ncbi_key in ncbi_keys:
-                additional[ncbi_key] = interaction_map["name"][key]
+                additional[ncbi_key] = interaction_map["ncbi"].get(ncbi_key, set())
     interaction_map["name"].update(additional)
     if not test_mode:
         interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
