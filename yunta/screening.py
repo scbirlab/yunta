@@ -17,6 +17,7 @@ from tqdm.auto import tqdm
 from .structs.metrics import DCAMetrics, ModelMetrics, RF2TMetrics
 from .structs.msa import MSA, PairedMSA
 
+
 def _pair_msas(
     msa1: MSA, 
     msa2: Optional[MSA] = None,
@@ -487,6 +488,7 @@ def model_many_vs_many(
     model_runner: Optional = None,
     *args, **kwargs
 ) -> List[ModelMetrics]:
+    from .modelling import make_model_runner
 
     model_runner = make_model_runner(*args, **kwargs)
     metrics = []

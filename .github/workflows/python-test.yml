@@ -41,7 +41,9 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pytest yunta --doctest-modules --junitxml=tests/test-results.xml --cov=com --cov-report=xml --cov-report=html
+        pytest yunta/interaction_utils.py --doctest-modules --junitxml=tests/test-results.xml --cov=com --cov-report=xml --cov-report=html
+        pytest yunta/structs/msa.py --doctest-modules --junitxml=tests/test-results.xml --cov=com --cov-report=xml --cov-report=html
+        pytest test/test_check_ref_match.py --cov=com --cov-report=xml --cov-report=html
     - name: Upload pytest test results
       uses: actions/upload-artifact@v4
       with:

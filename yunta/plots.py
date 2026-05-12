@@ -4,7 +4,7 @@ from typing import Optional
 import os
 
 from carabiner import print_err
-from numpy.typing improt ArrayLike
+from numpy.typing import ArrayLike
 
 
 def plot_matrix(
