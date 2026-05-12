@@ -5,8 +5,6 @@ from typing import Optional, Tuple
 import numpy as np
 from numpy.typing import ArrayLike
 
-from .src_speedppi.alphafold import protein
-
 def _euclidean_dist(x: ArrayLike, 
                     y: Optional[ArrayLike] = None) -> float:
     if y is None:
@@ -65,6 +63,7 @@ def score_ppi(unrelaxed_protein, plddt, chain_a_length: int) -> Tuple[float, flo
     """Score the PPI.
 
     """
+    from .src_speedppi.alphafold import protein
 
     #Get the pdb and Cβ coords
     _, cβ_coords = protein.to_pdb(unrelaxed_protein)

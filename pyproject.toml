@@ -26,8 +26,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 
-dependencies = [ 
-  "absl-py",
+dependencies = [
   "bioino",
   "biopython",
   "carabiner-tools[mpl,pd]>=0.0.5.post3",
@@ -40,6 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 af_base = [
+  "absl-py",
   "dm-haiku==0.0.12",
   "dm-tree",
   "ml-collections==0.1.0",
@@ -89,4 +89,4 @@ requires = ["setuptools>=43.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [test]
-deps = ["pytest>=7.4", "pytest-cov", "yunta[dev,af,rf2t]"] 
+deps = ["pytest>=7.4", "pytest-cov", "yunta[dev]"]

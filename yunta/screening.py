@@ -14,11 +14,6 @@ import numpy as np
 from numpy.typing import ArrayLike
 from tqdm.auto import tqdm
 
-from .io import save_design
-from .modelling import make_model_runner
-from .scoring import score_ppi
-from .src_speedppi.alphafold import protein, residue_constants
-from .src_speedppi.alphafold.data import foldonly
 from .structs.metrics import DCAMetrics, ModelMetrics, RF2TMetrics
 from .structs.msa import MSA, PairedMSA
 
@@ -87,6 +82,8 @@ def _calculate_interaction_blocks(
 
 
 def _get_af2_features(paired_msa: PairedMSA) -> Dict[str, Union[str, int]]:
+
+    from .src_speedppi.alphafold.data import foldonly
 
     msa_seqs = paired_msa.sequences()
     # The msas must be str representations of the blocked+paired MSAs here
@@ -316,6 +313,8 @@ def model_protein_interaction(
     """Model a single PPI using a pair of MSA files.
     
     """
+    from .modelling import make_model_runner
+
     if seed is None:
         seed = random.randrange(sys.maxsize)
     if model_runner is None:
@@ -355,9 +354,15 @@ def evaluate_and_save_model(
     """Evalulate a model and save PDB.
     
     """
-    plddt_b_factors = np.repeat(prediction_result['plddt'][:, np.newaxis], 
-                                residue_constants.atom_type_num, 
-                                axis=-1)
+    from .io import save_design
+    from .scoring import score_ppi
+    from .src_speedppi.alphafold import protein, residue_constants
+
+    plddt_b_factors = np.repeat(
+        prediction_result['plddt'][:, np.newaxis], 
+        residue_constants.atom_type_num, 
+        axis=-1,
+    )
     # Add the predicted LDDT in the b-factor column.
     # Note that higher predicted LDDT value means higher model confidence.
     unrelaxed_protein = protein.from_prediction(
@@ -436,6 +441,8 @@ def model_one_vs_many(
     model_runner: Optional = None,
     *args, **kwargs
 ) -> List[ModelMetrics]:
+
+    from .modelling import make_model_runner
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

@@ -1,15 +1,12 @@
 """Data structures for multiple sequence alignments."""
 
 from typing import Iterable, List, Mapping, Tuple, Optional, Union
-
 from copy import deepcopy
+from dataclasses import asdict, dataclass, field, fields
 from io import TextIOWrapper
 from itertools import dropwhile, product
 import sys
 
-from dataclasses import asdict, dataclass, field, fields
-
-from bioino import FastaCollection
 from carabiner import cast, print_err
 from tqdm.auto import tqdm
 
@@ -23,6 +20,23 @@ __BLOCK_GAPS__ = "__BLOCK_GAPS__"
 
 @dataclass
 class MSAName:
+    """Parsed MSA sequence name (header line).
+
+    Splits UniProt-style pipe-delimited names into database, unique ID,
+    and entry name. Non-pipe-delimited headers get sentinel values.
+
+    Examples
+    ========
+    >>> MSAName('>sp|P07807|DYR_YEAST').database
+    'sp'
+    >>> MSAName('>sp|P07807|DYR_YEAST').unique_id
+    'P07807'
+    >>> MSAName('>sp|P07807|DYR_YEAST').entry_name
+    'DYR_YEAST'
+    >>> MSAName('>UniRef90_A0A1B2').unique_id
+    '__NO_ENTRY_ID__'
+
+    """
     name: str
     input_name: str = field(init=False)
     database: str = field(init=False)
@@ -50,6 +64,26 @@ class MSAName:
 
 @dataclass
 class MSADescription:
+    """Parsed MSA sequence description line.
+
+    Extracts species identity from UniProt-style description fields.
+    Prefers the NCBI taxon ID (``OX=``), falls back to ``TaxID=``,
+    then to the species name (``OS=``), then to ``-1`` if none present.
+
+    >>> MSADescription('Gene OS=Escherichia coli OX=562 GN=x PE=1 SV=1').species_id
+    'NCBI:562'
+    >>> MSADescription('Gene OS=Mycobacterium tuberculosis TaxID=1773 GN=y').species_id
+    'TaxID:1773'
+    >>> MSADescription('Gene OS=Borrelia burgdorferi GN=z').species_id
+    'Name:Borrelia burgdorferi'
+    >>> MSADescription('Gene GN=w PE=4 SV=1').species_id
+    -1
+    >>> MSADescription('Gene GN=w PE=4 SV=1').generic_species_name is None
+    True
+    >>> MSADescription('Gene OS=Escherichia coli OX=562 GN=x PE=1 SV=1').generic_species_name
+    'Escherichia coli'
+
+    """
     description: str
     species_id: str = field(init=False)
     prefix: str = field(init=False)
@@ -98,6 +132,26 @@ class MSADescription:
 
 @dataclass
 class MSALine:
+    """A single aligned sequence with its header metadata.
+
+    Lowercase letters (insertions in A3M format) are stripped from the
+    sequence. Gap fraction is computed over the uppercase-only sequence.
+
+    Examples
+    ========
+    >>> line = MSALine(
+    ...     name='>sp|P12345|GENE_ECOLI',
+    ...     description='Gene OS=Escherichia coli OX=562 GN=x PE=1 SV=1',
+    ...     sequence='MARNDagctagQE--W',
+    ... )
+    >>> line.sequence
+    'MARNDQE--W'
+    >>> line.gap_fraction
+    0.2
+    >>> len(line)
+    10
+
+    """
     name: str
     description: str
     sequence: str
@@ -177,6 +231,7 @@ class MSA:
 
     @classmethod
     def from_file(cls, file: Union[str, TextIOWrapper]) -> 'MSA':
+        from bioino import FastaCollection
         collection = list(FastaCollection.from_file(file).sequences)
         # print(collection[0])
         return cls(MSALine(**asdict(seq)) for seq in tqdm(collection))
@@ -269,31 +324,57 @@ class PairedMSA(MSA):
 
     @staticmethod
     def _check_ref_match(
-        msa1: MSA, 
+        msa1: MSA,
         msa2: MSA,
         interaction_map: Optional[Mapping[str, Iterable[str]]] = None,
         name_attr: str = "species_id"
     ) -> None:
+        """Validate that the reference sequences (first lines) of two MSAs
+        are from organisms that can interact.
+
+        Passes silently on a valid pair.
+        
+        Raises
+        ======
+        ``AttributeError``
+            If neither organism is in the other's allowed set
+        ``ValueError`` if a species ID is unknown (``-1``).
+
+        ``interaction_map`` is checked in both directions: the pair is valid
+        if ``id2`` is in ``map[id1]`` OR ``id1`` is in ``map[id2]``.
+
+        """
         id1, id2 = (
             getattr(msa.lines[0].description, name_attr) for msa in (msa1, msa2)
         )
+        if id1 == -1 or id2 == -1:
+            raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
         if interaction_map is not None:
             allowed_id2 = interaction_map.get(id1, [])
             allowed_id1 = interaction_map.get(id2, [])
-        else:
-            allowed_id2 = [id2]
-            allowed_id1 = [id1]
-        if not id2 in allowed_id2 and not id1 in allowed_id1:
-            raise AttributeError(
-                f"""
-                MSA reference species do not match: 
-                
-                ID1: {id1}; allowed: {allowed_id1}
-                ID2: {id2}; allowed: {allowed_id2}
+        
+            if not id2 in allowed_id2 and not id1 in allowed_id1:
+                raise AttributeError(
+                    f"""
+                    MSA reference species do not match: 
+                    
+                    ID1: {id1}; allowed: {allowed_id1}
+                    ID2: {id2}; allowed: {allowed_id2}
 
-                """)
-        if id1 == -1 or all(_id2 == -1 for _id2 in allowed_id2):
-            raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
+                    """
+                )
+            if id1 == -1 or all(_id2 == -1 for _id2 in allowed_id2):
+                raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
+        else:
+            if id1 != id2:
+                raise AttributeError(
+                    f"""
+                    MSA reference species do not match, and no interaction map provided: 
+                    
+                    ID1: {id1}; ID2: {id2}
+
+                    """
+                )
         return None
 
     @staticmethod
