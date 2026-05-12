@@ -76,13 +76,13 @@ class MSADescription:
         if "OX" in self.info:  # NCBI identifier. Doesn't exist for everything
             species_id = f"NCBI:{self.info['OX']}"
         elif "TaxID" in self.info:
-            species_id = f"TaxID:{self.info['TaxID']}"
+            species_id = f"NCBI:{self.info['TaxID']}"
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
         else:
             species_id = -1
             if self.description != '__BLOCK_GAPS__' and self._verbose:
-                print_err(f"MSA has no species info. Description string: {self.description.rstrip()}")
+                print_err(f"[WARN] MSA has no species info. Description string: {self.description.rstrip()}")
         self.species_id = species_id
         if species_id == -1:
             self.generic_species_name = None 
@@ -187,11 +187,12 @@ class MSA:
     def neff(self, identity_threshold: float = .62) -> int:
         """Calculate the number of effective sequences.
         """
+        import numpy as np
         remaining_msa = deepcopy(self.sequence_token_ids)
         threshold = float(self.seq_length * identity_threshold)
         n_effective = 0
         print_err(
-            f"Clustering at identity threshold: {identity_threshold} ",
+            f"[INFO] Clustering at identity threshold: {identity_threshold} ",
             f"({threshold}/{self.seq_length} positions): "
         )
         while len(remaining_msa) > 0:
@@ -199,18 +200,11 @@ class MSA:
                 f"\r:: Neff = {n_effective} | remaining to cluster: {len(remaining_msa)}", 
                 end='',
             )
-            first_remaining_msa = remaining_msa[0]
-            msa_diff = [
-                sum(
-                    (other - b) != 0 for other, b in zip(row, first_remaining_msa)
-                ) for row in remaining_msa
-            ]
-            remaining_msa = [
-                line for diff, line in zip(msa_diff, remaining_msa) 
-                if diff > threshold
-            ]
+            arr = np.array(remaining_msa, dtype=np.int8)
+            diffs = np.sum(arr != arr[0], axis=1)
+            remaining_msa = arr[diffs > threshold].tolist()
             n_effective += 1
-        print_err()
+        print_err(f"\n[INFO] Neff = {n_effective}")
         return n_effective
 
     def _filter_by_index(self, indices=Iterable[int]) -> 'MSA':
@@ -230,11 +224,11 @@ class MSA:
                         ],
                     )
         final_len = len(new_copy)
-        print_err(f"Filtered out {start_len - final_len}/{start_len} lines from MSA.")
+        print_err(f"[INFO] Filtered out {start_len - final_len}/{start_len} lines from MSA.")
         return new_copy
 
     def filter_by_known_species(self) -> 'MSA':
-        print_err("Filtering MSA by known species.")
+        print_err("[INFO] Filtering MSA by known species.")
         indices_to_keep = (
             i for i, line in enumerate(self.lines) 
             if line.description.species_id != -1
@@ -243,7 +237,7 @@ class MSA:
 
     def filter_by_gap_fraction(self, max_gap_fraction: float = 1.) -> 'MSA':
         if max_gap_fraction < 1.:
-            print_err(f"Filtering MSA by gap fraction < {max_gap_fraction}.")
+            print_err(f"[INFO] Filtering MSA by gap fraction < {max_gap_fraction}.")
             indices_to_keep = (
                 i for i, line in enumerate(self.lines)
                 if line.gap_fraction <= max_gap_fraction
@@ -288,6 +282,7 @@ class PairedMSA(MSA):
             allowed_id1 = interaction_map.get(id2, [])
         else:
             allowed_id2 = [id2]
+            allowed_id1 = [id1]
         if not id2 in allowed_id2 and not id1 in allowed_id1:
             raise AttributeError(
                 f"""
@@ -394,7 +389,7 @@ class PairedMSA(MSA):
             sep = '\n\t- '
             print_err(
                 f"""
-                Query species {query_pair} is not among the shared species in the MSAs:" 
+                [ERROR] Query species {query_pair} is not among the shared species in the MSAs:" 
                     - {sep.join(map(str, sorted(species_pairs)))}
                 """
             )
@@ -403,9 +398,24 @@ class PairedMSA(MSA):
         msa_lines, matched_species = [], set()
         for _sp1, _sp2 in species_pairs:
             _lines1, _lines2 = species_msa1[_sp1], species_msa2[_sp2]
+            # Name-level fallback keys for cross-strain matching
+            # (e.g. NCBI:10710 → "Enterobacteria phage lambda" matches "Escherichia coli")
+            if _lines1:
+                _sp1_name = _lines1[0].description.generic_species_name
+            else:
+                _sp1_name = _sp1
+            if _lines2:
+                _sp2_name = _lines2[0].description.generic_species_name
+            else:
+                _sp2_name = _sp2
             if any(
-                sA in interaction_map.get(sB, []) 
-                for sA, sB in zip((_sp1, _sp2), (_sp2, _sp1))
+                (
+                    sA in interaction_map.get(sB, []) 
+                    or sA in interaction_map.get(sB_name, [])
+                ) for (sA, sB, sB_name) in [
+                    (_sp1, _sp2, _sp2_name), 
+                    (_sp2, _sp1, _sp1_name),
+                ]
             ):
                 line1, line2 = _lines1[0], _lines2[0]
                 msa_lines.append(

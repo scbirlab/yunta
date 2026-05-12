@@ -22,6 +22,7 @@ def _pdockq(avg_interface_plddt: float, n_interface_contacts: int):
 
     Examples
     --------
+    >>> import numpy as np; np.set_printoptions(legacy="1.25")
     >>> _pdockq(.1, 3)
     0.018259536451737016
     >>> _pdockq(.9, 100)

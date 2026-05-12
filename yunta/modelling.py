@@ -25,7 +25,7 @@ def make_model_runner(
     from .src_speedppi.alphafold.model import config, data, model
     from jax.lib import xla_bridge
 
-    print_err(f"Setting up AlphaFold2 model. XLA platform available: {xla_bridge.get_backend().platform}")
+    print_err(f"[INFO] Setting up AlphaFold2 model. XLA platform available: {xla_bridge.get_backend().platform}")
 
     if model_name is None:
         model_name = 'model_1'

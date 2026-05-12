@@ -32,7 +32,7 @@ def plot_matrix(
     if filename_prefix is not None:
         plot_dir = os.path.dirname(filename_prefix)
         if not os.path.exists(plot_dir):
-            print_err(f"Creating output directory {plot_dir}")
+            print_err(f"[INFO]  Creating output directory {plot_dir}")
             os.makedirs(plot_dir)
         df = DataFrame(
             m, 

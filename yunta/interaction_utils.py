@@ -39,7 +39,7 @@ _data_csv_path = os.path.join(
 def _name_normalizer(x: Iterable[str]):
     x = [str(name).split("subsp.")[0].split("sp.")[0].split("(")[0].strip("'").strip().casefold() for name in x]
     x = [" ".join(name.split(" ")[:2]) if (not "virus" in name and not "phage" in name) else name for name in x]
-    return [f"{name[0].upper()}{name[1:]}" for name in x]
+    return [f"{name.capitalize()}" if name else name for name in x]
 
 def _create_data_json(
     csv_path: str,
@@ -111,12 +111,15 @@ def _create_data_json(
             pass
         else:
             for ncbi_key in ncbi_keys:
-                additional[ncbi_key] = interaction_map["ncbi"].get(ncbi_key, set())
-    interaction_map["name"].update(additional)
+                additional[ncbi_key] |= interaction_map["ncbi"].get(ncbi_key, set()) | {key}
+    interaction_map["name"] |= additional
     if not test_mode:
-        interaction_map = {key: sorted(val) for key, val in interaction_map["name"].items()}
+        interaction_map = {
+            key: sorted(val) 
+            for key, val in interaction_map["name"].items()
+        }
     if test_mode:
-        print_err("Loading interaction map directly into memory")
+        print_err("[INFO] Loading interaction map directly into memory")
         return interaction_map["name"]
     with gzip.open(json_path, mode='wt', encoding='UTF-8') as f:
         json.dump(interaction_map, f, sort_keys=True, indent=4)
@@ -136,7 +139,7 @@ def organism_interactions(
     )
 
     if test_mode and len(ORGANISM_INTERACTIONS) == 0:
-        print_err("Building organism interaction lookup table and loading into memory...", flush=True)
+        print_err("[INFO] Building organism interaction lookup table and loading into memory...", flush=True)
         ORGANISM_INTERACTIONS.update(
             _create_data_json(
                 _data_csv_path, 
@@ -151,7 +154,7 @@ def organism_interactions(
                 os.makedirs(CACHE_PATH)
             except OSError:
                 if len(ORGANISM_INTERACTIONS) == 0:
-                    print_err("File system not writable; building organism interaction lookup table and loading into memory...", flush=True)
+                    print_err("[INFO] File system not writable; building organism interaction lookup table and loading into memory...", flush=True)
                     ORGANISM_INTERACTIONS.update(
                         _create_data_json(
                             _data_csv_path, 
@@ -162,9 +165,9 @@ def organism_interactions(
                     )
                 return ORGANISM_INTERACTIONS
         if not os.path.exists(_data_json_path):
-            print_err("Organism interaction lookup table not yet built; building...", flush=True)
+            print_err("[INFO] Organism interaction lookup table not yet built; building...", flush=True)
             _create_data_json(_data_csv_path, _data_json_path, _name2ncbi_path)
-            print_err("Done!")
+            print_err("[INFO] Done!")
         global _INTERACTION_FILE_LOADED
         if not _INTERACTION_FILE_LOADED:
             with gzip.open(_data_json_path, "rt", encoding='UTF-8') as f:
