@@ -39,7 +39,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-_af_base = [
+af_base = [
   "dm-haiku==0.0.12",
   "dm-tree",
   "ml-collections==0.1.0",
@@ -47,19 +47,19 @@ _af_base = [
   "tensorrt",
 ]
 af = [
-  "yunta[_af_base]",
+  "yunta[af_base]",
   "jax<=0.4.35",
 ]
 af_cuda12 = [
-  "yunta[_af_base]",
+  "yunta[af_base]",
   "jax[cuda12]<=0.4.35",
 ]
 af_cuda12_local = [
-  "yunta[_af_base]",
+  "yunta[af_base]",
   "jax[cuda12_local]<=0.4.35",
 ]
 af_cuda11 = [
-  "yunta[_af_base]",
+  "yunta[af_base]",
   "jax[cuda11]<=0.4.35",
 ]
 rf2t = [
