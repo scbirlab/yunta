@@ -88,7 +88,7 @@ class RF2TMetrics(InteractionMetrics):
 
 
 @dataclass
-class ModelMetrics(InteractionMetrics):
+class AF2Metrics(InteractionMetrics):
     """Storage for AlphaFold2 model metrics.
     """
     _name: ClassVar[str] = "AF2"

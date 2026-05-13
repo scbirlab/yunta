@@ -1,13 +1,12 @@
 """Tools for setting up and using models."""
 
 from typing import Optional
-
 import os
 from time import time
 
 from carabiner import print_err
 
-from .weights import get_model_weights
+from ...weights import get_model_weights
 
 def make_model_runner(
     num_ensemble: int = 1,
@@ -25,7 +24,7 @@ def make_model_runner(
     except ImportError as e:
         print_err("Tensorflow is not installed. Try pip isntall yunta[af].")
     tf.config.experimental.set_visible_devices([], "GPU")    
-    from .src_speedppi.alphafold.model import config, data, model
+    from ...src_speedppi.alphafold.model import config, data, model
     from jax.lib import xla_bridge
 
     print_err(f"[INFO] Setting up AlphaFold2 model. XLA platform available: {xla_bridge.get_backend().platform}")
@@ -40,7 +39,9 @@ def make_model_runner(
     model_config.data.common.num_recycle = max_recycles
     model_config.model.num_recycle = max_recycles
 
-    model_params = data.get_model_haiku_params(model_name=model_name, 
-                                               data_dir=param_dir)
+    model_params = data.get_model_haiku_params(
+        model_name=model_name, 
+        data_dir=param_dir,
+    )
 
     return model.RunModel(model_config, model_params)
