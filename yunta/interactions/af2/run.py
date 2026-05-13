@@ -21,7 +21,7 @@ from ...structs.msa import PairedMSA
 
 def _get_af2_features(paired_msa: PairedMSA) -> Dict[str, Union[str, int]]:
 
-    from ...src_speedppi.alphafold.data import foldonly
+    from .src_speedppi.alphafold.data import foldonly
 
     msa_seqs = paired_msa.sequences()
     # The msas must be str representations of the blocked+paired MSAs here
@@ -156,7 +156,7 @@ def save_pdb(
     seed: Optional[int] = None,
     output_dir: os.PathLike = "."
 ):
-    from ...src_speedppi.alphafold import protein
+    from .src_speedppi.alphafold import protein
     feature_dict, processed_feature_dict, prediction_result = model_protein_interaction(
         paired_msa=paired_msa,
         model=model,

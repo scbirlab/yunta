@@ -1,5 +1,5 @@
 
-from typing import Optional
+from typing import Optional, Tuple
 from numpy import ndarray
 import numpy as np
 from numpy.typing import ArrayLike
@@ -35,7 +35,7 @@ def _pdockq(
 
 
 def get_contact_matrix(unrelaxed_protein) -> Tuple[ndarray, ...]:
-    from ...src_speedppi.alphafold import protein
+    from .src_speedppi.alphafold import protein
     #Get the pdb and Cβ coords
     _, cβ_coords = protein.to_pdb(unrelaxed_protein)
     contact_dists = _euclidean_dist(cβ_coords)

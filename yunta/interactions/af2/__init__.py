@@ -1,1 +1,1 @@
-from .run import af2 as run_af2, make_af2_model
+from .run import af2 as run_af2, post_af2

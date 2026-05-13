@@ -2,6 +2,7 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Mapping, Optional, Tuple, Union
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from functools import partial
 from itertools import combinations
 
 from carabiner import print_err
@@ -136,7 +137,7 @@ class Runner(ABC):
 
         results, others = _calculate_interaction_blocks(
             paired_msa,
-            interaction_fn=self._run_chunk,
+            interaction_fn=partial(self._run_chunk, model=model),
             chunksize=chunksize,
             **kwargs
         )
@@ -171,7 +172,8 @@ class AF2Runner(Runner):
     def _run_chunk(
         paired_msa: PairedMSA,
         model: Optional[Callable] = None,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        **kwargs
     ):
         from .af2 import run_af2
         return run_af2(
@@ -200,14 +202,15 @@ class DCARunner(Runner):
     def _run_chunk(
         paired_msa: PairedMSA,
         model: Optional[Callable] = None,
-        apc: bool = True
+        apc: bool = True,
+        **kwargs
     ):
-        from .dca import run_dca
-        return run_dca(
-            paired_msa=paired_msa,
-            model=model,
+        from .dca.dca_torch import calculate_dca
+        return calculate_dca(
+            msa=paired_msa, 
             apc=apc,
-        )
+        ), {}
+
 
 
 class RF2TRunner(Runner):
@@ -216,18 +219,23 @@ class RF2TRunner(Runner):
 
     @staticmethod
     def make_model(cpu=True, **kwargs):
-        from .rf2t import make_rf2t_model
-        return make_rf2t_model(cpu=cpu, **kwargs)
+        from rf2t_micro.predict_msa import Predictor
+        import torch
+        if not cpu:
+            torch.cuda.empty_cache()
+        model = Predictor(use_cpu=cpu)
+        return model
 
     @staticmethod
     def _run_chunk(
         paired_msa: PairedMSA,
-        model: Optional[Callable] = None
+        chain_a_length: int,
+        model: Optional[Callable] = None,
+        **kwargs
     ):
-        from .rf2t import run_rf2t
-        return run_rf2t(
-            paired_msa=paired_msa,
-            model=model,
+        result, cα_coords = model.predict(
+            paired_msa, 
+            chain_a_length=chain_a_length,
         )
-
+        return result, {}
     
