@@ -23,7 +23,8 @@ def _pair_msas(
     msa2: Optional[MSA] = None,
     max_gap_fraction: float = 1.,
     blocked: bool = False,
-    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    enforce_ref_match: bool = False
 ) -> Mapping[str, Union[int, float]]:
     return (
         PairedMSA.from_msa(
@@ -31,6 +32,7 @@ def _pair_msas(
             msa2, 
             blocked=blocked, 
             interaction_map=interaction_map,
+            enforce_ref_match=enforce_ref_match,
         )
         .filter_by_gap_fraction(max_gap_fraction)
     )
@@ -109,7 +111,8 @@ def rf2track(
     interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
     cpu: bool = True,
     model: Optional = None,
-    chunksize: int = 1500 
+    chunksize: int = 1500,
+    enforce_ref_match: bool = False
 ) -> Tuple[np.ndarray, np.ndarray, RF2TMetrics]:
 
     paired_msa = _pair_msas(
@@ -117,6 +120,7 @@ def rf2track(
         msa2, 
         max_gap_fraction=max_gap_fraction, 
         interaction_map=interaction_map,
+        enforce_ref_match=enforce_ref_match,
     )
     print_err(paired_msa)
     chain_a_length = paired_msa.chain_a_length
@@ -199,7 +203,8 @@ def paired_dca(
     msa2: Optional[MSA] = None,
     apc: bool = False,
     max_gap_fraction: float = .9,
-    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    enforce_ref_match: bool = False
 ) -> Tuple[np.ndarray, np.ndarray, DCAMetrics]:
 
     paired_msa = _pair_msas(
@@ -207,6 +212,7 @@ def paired_dca(
         msa2, 
         max_gap_fraction=max_gap_fraction, 
         interaction_map=interaction_map,
+        enforce_ref_match=enforce_ref_match,
     )
     print_err(paired_msa)
     neff = paired_msa.neff()
@@ -308,6 +314,7 @@ def model_protein_interaction(
     seed: Optional[int] = None,
     max_gap_fraction: float = .9,
     interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    enforce_ref_match: bool = False,
     *args, **kwargs
 ) -> Tuple[Mapping[str, Union[float, int]], Any, PairedMSA]:
     
@@ -326,6 +333,7 @@ def model_protein_interaction(
         blocked=True, 
         max_gap_fraction=max_gap_fraction, 
         interaction_map=interaction_map,
+        enforce_ref_match=enforce_ref_match,
     )
     print_err(paired_msa)
 

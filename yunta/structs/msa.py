@@ -383,9 +383,10 @@ class PairedMSA(MSA):
         msa2: Optional[MSA] = None, 
         blocked: bool = False,
         interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
-        strict_species_match: bool = False
+        strict_species_match: bool = False,
+        enforce_ref_match: bool = False,
+        name_attr: str = "species_id"
     ) -> Tuple[List[PairedMSALine], int]:
-        name_attr = "species_id"
         if strict_species_match or interaction_map is None:
             fallback_name_attr = name_attr
         else:
@@ -395,6 +396,7 @@ class PairedMSA(MSA):
         msa1_known, msa2_known = (msa.filter_by_known_species() for msa in (msa1, msa2))
 
         if interaction_map is None:
+            strict_intraspecies = True
             all_species = [
                 getattr(line.description, name_attr)
                 for msa in (msa1_known, msa2_known) 
@@ -404,8 +406,10 @@ class PairedMSA(MSA):
                 _species: set([_species]) for _species in all_species
             }
         elif interaction_map == "builtin":
+            strict_intraspecies = False
             interaction_map = organism_interactions()
         elif isinstance(interaction_map, Mapping):
+            strict_intraspecies = False
             interaction_map = {
                 key: set(cast(val, to=list) + [key]) 
                 for key, val in interaction_map.items()
@@ -418,25 +422,32 @@ class PairedMSA(MSA):
                 """
             )
 
-        try:
-            PairedMSA._check_ref_match(
-                msa1=msa1_known, 
-                msa2=msa2_known, 
-                interaction_map=interaction_map, 
-                name_attr=name_attr,
-            )
-        except AttributeError as e:
-            if fallback_name_attr != name_attr:
+        if enforce_ref_match or strict_intraspecies:
+            try:
                 PairedMSA._check_ref_match(
                     msa1=msa1_known, 
                     msa2=msa2_known, 
                     interaction_map=interaction_map, 
-                    name_attr=fallback_name_attr,
+                    name_attr=name_attr,
                 )
-                query_name_attr = fallback_name_attr
+            except AttributeError as e:
+                if fallback_name_attr != name_attr:
+                    PairedMSA._check_ref_match(
+                        msa1=msa1_known, 
+                        msa2=msa2_known, 
+                        interaction_map=interaction_map, 
+                        name_attr=fallback_name_attr,
+                    )
+                    query_name_attr = fallback_name_attr
+                else:
+                    raise e
             else:
-                raise e
+                query_name_attr = name_attr
         else:
+            print_err(
+                "[WARN] HPI map constraint relaxed for query sequences. "
+                "Aligned sequence pairing still enforced."
+            )
             query_name_attr = name_attr
         
         #Get the matches
