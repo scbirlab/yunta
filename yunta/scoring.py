@@ -5,8 +5,30 @@ from typing import Optional, Tuple
 import numpy as np
 from numpy.typing import ArrayLike
 
-def _euclidean_dist(x: ArrayLike, 
-                    y: Optional[ArrayLike] = None) -> float:
+
+def score_contact_map(M: np.ndarray, top_n: int = 10) -> dict:
+    U, s, Vt = np.linalg.svd(M, full_matrices=False)
+    weightsA = U[:, 0]
+    weightsB = Vt[0, :]
+    return {
+        "mean": np.mean(M),
+        "median": np.median(M),
+        "var": np.var(M),
+        "minimum": np.min(M),
+        "maximum": np.max(M),
+        "sigma1":   s[0],
+        "focality": s[0] / s[1] if s[1] > 0 else np.inf,
+        "top_A": np.flatnonzero(-weightsA < np.sort(-weightsA)[top_n]),
+        "top_B": np.flatnonzero(-weightsB < np.sort(-weightsB)[top_n]),
+        "weights_A": weightsA,   # per-residue weights, protein A
+        "weights_B": weightsB,  # per-residue weights, protein B
+    }
+
+
+def _euclidean_dist(
+    x: ArrayLike, 
+    y: Optional[ArrayLike] = None
+) -> float:
     if y is None:
         y = x
     x, y = x[...,np.newaxis], y[...,np.newaxis,:]
@@ -28,13 +50,15 @@ def _pdockq(avg_interface_plddt: float, n_interface_contacts: int):
     """
 
     x = avg_interface_plddt * np.log10(n_interface_contacts)
-    return 0.724 / (1 + np.exp(-0.052 * (x - 152.611))) + 0.018
+    return .724 / (1 + np.exp(-.052 * (x - 152.611))) + .018
 
 
-def _score_ppi(cb_coords: ArrayLike, 
-               plddt: ArrayLike,  
-               chain_a_length: int,
-               contact_radius: float = 8.) -> Tuple[float, float, int]:
+def _score_ppi(
+    cb_coords: ArrayLike, 
+    plddt: ArrayLike,  
+    chain_a_length: int,
+    contact_radius: float = 8.
+) -> Tuple[float, float, int]:
     
     #Cβs within 8 Å from each other from different chains are used to define the interface.
     cβ_dists = _euclidean_dist(cb_coords)
@@ -57,19 +81,16 @@ def _score_ppi(cb_coords: ArrayLike,
         plddt1, plddt2 = plddt[:chain_a_length], plddt[chain_a_length:]
         #Get the average interface plDDT
         _plddt = np.concatenate([
-            plddt[np.unique(contacts[:,i])] 
-            for i, plddt in enumerate([plddt1, plddt2])
+            p[np.unique(contacts[:,i])] 
+            for i, p in enumerate([plddt1, plddt2])
         ])
-        avg_interface_plddt = {
-            "mean": np.mean(_plddt),
-            "median": np.median(_plddt),
-            "var": np.var(_plddt),
-            "minimum": np.min(_plddt),
-            "maximum": np.max(_plddt),
+        inv_contact_dists = 1. / contact_dists
+        avg_interface_plddt = score_contact_map(inv_contact_dists) | {
+            "mean_plddt": np.mean(_plddt),
         } 
         #Get the number of interface contacts
         n_interface_contacts = contacts.shape[0]
-        pdockq = _pdockq(avg_interface_plddt["mean"], n_interface_contacts)
+        pdockq = _pdockq(avg_interface_plddt["mean_plddt"], n_interface_contacts)
 
     return pdockq, avg_interface_plddt, n_interface_contacts
 
