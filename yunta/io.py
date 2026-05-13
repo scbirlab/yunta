@@ -41,9 +41,11 @@ def save_design(pdb_info,
     return None
 
 
-def write_metrics(metrics: Union[Iterable, Any],
-                  filename: Union[str, TextIOWrapper], 
-                  mode: str = 'w'):
+def write_metrics(
+    metrics: Union[Iterable, Any],
+    filename: Union[str, TextIOWrapper], 
+    mode: str = 'w',
+):
     
     """
     
@@ -56,14 +58,12 @@ def write_metrics(metrics: Union[Iterable, Any],
     f = cast(filename, to=TextIOWrapper, mode=mode)
     if f.name != '<stdout>':
         dirname = os.path.dirname(f.name)
-        if len(dirname) > 0  and not os.path.exists(dirname):
-            print_err(f"Creating output directory {dirname}")
-            os.makedirs(dirname)
+        if len(dirname) > 0:
+            os.makedirs(dirname, exist_ok=True)
 
     w = DictWriter(f, fieldnames=list(asdict(metrics[0])), delimiter='\t')
     if mode == 'w':
         w.writeheader()
     for metric in metrics:
         w.writerow(asdict(metric))
-
     return None

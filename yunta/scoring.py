@@ -43,17 +43,33 @@ def _score_ppi(cb_coords: ArrayLike,
     contact_dists = cβ_dists[:chain_a_length,chain_a_length:] #upper triangular --> first dim = chain 1
     contacts = np.argwhere(contact_dists <= contact_radius)
 
+    base_plddt_stats = {
+        "mean": 0.,
+        "median": 0.,
+        "var": 0.,
+        "minimum": 0.,
+        "maximum": 0.,
+    }
     if contacts.shape[0] < 1:  # no contacts
-        pdockq, avg_interface_plddt, n_interface_contacts = 0., 0., 0
+        pdockq, avg_interface_plddt, n_interface_contacts = 0., base_plddt_stats, 0
     else:
         #Get plddt per chain
         plddt1, plddt2 = plddt[:chain_a_length], plddt[chain_a_length:]
         #Get the average interface plDDT
-        avg_interface_plddt = np.average(np.concatenate([plddt[np.unique(contacts[:,i])] 
-                                                         for i, plddt in enumerate((plddt1, plddt2))]))
+        _plddt = np.concatenate([
+            plddt[np.unique(contacts[:,i])] 
+            for i, plddt in enumerate([plddt1, plddt2])
+        ])
+        avg_interface_plddt = {
+            "mean": np.mean(_plddt),
+            "median": np.median(_plddt),
+            "var": np.var(_plddt),
+            "minimum": np.min(_plddt),
+            "maximum": np.max(_plddt),
+        } 
         #Get the number of interface contacts
         n_interface_contacts = contacts.shape[0]
-        pdockq = _pdockq(avg_interface_plddt, n_interface_contacts)
+        pdockq = _pdockq(avg_interface_plddt["mean"], n_interface_contacts)
 
     return pdockq, avg_interface_plddt, n_interface_contacts
 

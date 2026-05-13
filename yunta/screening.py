@@ -159,6 +159,7 @@ def rf2track(
         minimum=np.min(result_interaction), 
         mean=np.mean(result_interaction), 
         median=np.median(result_interaction)
+        var=np.var(result_interaction),
     )
     return result, result_interaction, metrics
 
@@ -246,8 +247,8 @@ def paired_dca(
         minimum=np.min(result_interaction), 
         mean=np.mean(result_interaction), 
         median=np.median(result_interaction),
+        var=np.var(result_interaction),
     )
-
     return result, result_interaction, metrics
 
 
@@ -256,7 +257,8 @@ def dca_one_vs_many(
     msa_file2: Optional[Union[str, TextIOWrapper]] = None,
     apc: bool = False,
     max_gap_fraction: float = .9,
-    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None
+    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    enforce_ref_match: bool = False
 ) -> List[DCAMetrics]:
 
     if msa_file2 is None:
@@ -276,6 +278,7 @@ def dca_one_vs_many(
                 apc=apc,
                 max_gap_fraction=max_gap_fraction,
                 interaction_map=interaction_map,
+                enforce_ref_match=enforce_ref_match,
             )
         )
 
@@ -342,8 +345,10 @@ def model_protein_interaction(
     # Run the model - on GPU
     t0 = time()
     #TODO: Swap the AlphaFold2 protein modelling for OpenFold (faster? PyTorch, open source)
-    processed_feature_dict = model_runner.process_features(feature_dict, 
-                                                           random_seed=seed)
+    processed_feature_dict = model_runner.process_features(
+        feature_dict, 
+        random_seed=seed,
+    )
     prediction_result = model_runner.predict(processed_feature_dict)
     print_err(f"[INFO] It took {time() - t0} s to predict the interaction.")
     
@@ -351,11 +356,14 @@ def model_protein_interaction(
 
 
 def evaluate_and_save_model(
+    msa1: MSA,
+    paired_msa: PairedMSA,
     feature_dict,
     processed_feature_dict: Mapping[str, Any],
     prediction_result: Mapping[str, Any],  
     chain_a_length: int,
     filename: str,
+    msa2: Optional[MSA] = None,
     pdockq_t: float = .5,
     force_save: bool = True
 ) -> ModelMetrics:
@@ -393,10 +401,22 @@ def evaluate_and_save_model(
         pdb, _ = protein.to_pdb(unrelaxed_protein)
         save_design(pdb, filename, chain_a_length)
     else:
-        print_err(f"[WARN] Skipping saving {feature_dict['ID']} structure with pDockQ = {pdockq:.2f}.")
+        print_err(f"[WARN] Skipping saving {feature_dict['ID']} structure with pDockQ = {pdockq:.2f} < {pdockq_t=}.")
     
-    return ModelMetrics(ID=feature_dict['ID'], n_contacts=n_interface_contacts, 
-                        mean_interface_plddt=avg_interface_plddt, pdockq=pdockq)
+    return ModelMetrics(
+        ID=feature_dict['ID'],
+        seq_len=paired_msa.seq_length,
+        chain_a_len=paired_msa.chain_a_length,
+        chain_b_len=paired_msa.chain_b_length,
+        msa1_depth=len(msa1),
+        msa2_depth=len(msa2) if msa2 is not None else len(msa1),
+        msa_depth=len(paired_msa),
+        n_eff=neff,
+        apc=apc,
+        n_contacts=n_interface_contacts,
+        pdockq=pdockq,
+        **avg_interface_plddt,
+    )
 
 
 def build_evaluate_and_save_model(
@@ -426,6 +446,9 @@ def build_evaluate_and_save_model(
     )
 
     metric = evaluate_and_save_model(
+        msa1=msa1, 
+        msa2=msa2,
+        paired_msa=paired_msa,
         feature_dict=feature_dict,
         processed_feature_dict=processed_feature_dict,
         prediction_result=prediction_result,  
