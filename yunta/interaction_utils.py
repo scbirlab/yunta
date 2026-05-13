@@ -97,7 +97,10 @@ def _create_data_json(
                 this_prefix, typer = prefix, int
             else:
                 this_prefix, typer = "", str
-            for organism, organism_df in tqdm(df.groupby(grouping_col)):
+            for organism, organism_df in tqdm(
+                df.groupby(grouping_col),
+                desc=f"Compiling lookup table by {grouping_col}",
+            ):
                 org_key = f"{this_prefix}{typer(organism)}"
                 for value_col in grouping_cols:
                     if value_col != grouping_col:
@@ -119,7 +122,10 @@ def _create_data_json(
                 indent=4,
             )
     additional = defaultdict(set)
-    for key, value in tqdm(interaction_map["name"].items()):
+    for key, value in tqdm(
+        interaction_map["name"].items(),
+        desc="Adding inverse",
+    ):
         vals_to_add = set()
         for v in value:
             try:

@@ -560,19 +560,23 @@ class PairedMSA(MSA):
 
     @classmethod
     def from_msa(
-            cls, 
-            msa1: MSA, 
-            msa2: Optional[MSA] = None,
-            blocked: bool = False,
-            interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
-            strict_species_match: bool = False
-        ) -> 'PairedMSA':
+        cls, 
+        msa1: MSA, 
+        msa2: Optional[MSA] = None,
+        blocked: bool = False,
+        interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+        strict_species_match: bool = False,
+        enforce_ref_match: bool = False,
+        **kwargs
+    ) -> 'PairedMSA':
         msa_lines, chain_a_length = cls.join_msa(
             msa1, 
             msa2, 
             blocked=blocked, 
             interaction_map=interaction_map, 
             strict_species_match=strict_species_match,
+            enforce_ref_match=enforce_ref_match,
+            **kwargs
         )
         return cls(lines=msa_lines, chain_a_length=chain_a_length)
 
@@ -581,7 +585,8 @@ class PairedMSA(MSA):
         cls, 
         file1: Union[str, TextIOWrapper],
         file2: Optional[Union[str, TextIOWrapper]] = None,
-        blocked: bool = False
+        blocked: bool = False,
+        **kwargs
     ) -> 'PairedMSA':
         """Read A3M file(s).
 
@@ -591,7 +596,7 @@ class PairedMSA(MSA):
             msa2 = deepcopy(msa1)
         else:
             msa2 = MSA.from_file(file2)
-        return cls.from_msa(msa1, msa2, blocked=blocked)
+        return cls.from_msa(msa1, msa2, blocked=blocked, **kwargs)
 
     def __str__(self) -> str:
         return "Paired " + super().__str__()
