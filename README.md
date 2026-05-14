@@ -4,6 +4,8 @@
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/yunta)
 ![PyPI](https://img.shields.io/pypi/v/yunta)
 
+<img src="docs/source/_static/logo.svg" alt="" width="200">
+
 Predicting pairwise protein-protein interactions and structures from multiple sequence alignments.
 _**Now with interspecies (host-pathogen) interactions**_ and _**automatic chunking of large sequences**_!
 
