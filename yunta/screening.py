@@ -183,6 +183,6 @@ def model_many_vs_many(
         interaction_map=interaction_map,
         enforce_ref_match=enforce_ref_match,
         seed=seed,
-        model_kwargs={"max_recycles": max_recycles, "param_dir": param_dir}
+        model_kwargs={"max_recycles": max_recycles, "param_dir": param_dir},
         **kwargs
     )

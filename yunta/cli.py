@@ -177,7 +177,7 @@ def main() -> None:
     interspecies = CLIOption(
         '--interspecies', '-i', 
         action='store_true',
-        help='MSAs are from differnt species, enables built-in host-pathogen interaction map. Default: Not inter-species.',
+        help='MSAs are from different species, enables built-in host-pathogen interaction map. Default: Not inter-species.',
     )
     params = CLIOption('--params', '-w', 
                        type=str,

@@ -75,17 +75,16 @@ def _calculate_interaction_blocks(
             si = slice(i0, i0 + n)
             block, *others = interaction_fn(
                 chunk_i,
-                chain_a_length=max(0, paired_msa.chain_a_length - i0),
+                chain_a_length=max(0, min(n, paired_msa.chain_a_length - i0)),
                 **kwargs,
             )
-            # Self-contacts are in the off-diagonal of the duplicated block
             result[si, si] = block
             for o in others:
                 _others[(i0, i0, n, n)].append(o)
         # Pass 2: off-diagonal blocks
         for (i, chunk_i), (j, chunk_j) in tqdm(
             combinations(enumerate(chunks), 2), 
-            total=n_blocks, 
+            total=n_chunks * (n_chunks - 1) // 2, 
             desc="Running off-diagonal blocks",
         ):
             i0, j0 = i * chunksize, j * chunksize
