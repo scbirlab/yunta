@@ -148,7 +148,7 @@ def model_one_vs_many(
     enforce_ref_match: bool = False,
     seed: Optional[int] = None,
     max_recycles: int = 10,
-    param_dir: Optional[str] = None
+    param_dir: Optional[str] = None,
     **kwargs
 ) -> List[AF2Metrics]:
     return _screen_one_vs_many(

@@ -1,5 +1,5 @@
 """Command-line interface for yunta."""
-
+from typing import Callable
 from argparse import FileType, Namespace
 import os
 import sys
@@ -49,7 +49,7 @@ def _msa_from_list_file(args: Namespace) -> tuple:
 
 def _base_command(args: Namespace, fn: Callable, **kwargs):
     msa1, msa2 = _msa_from_list_file(args)
-    outputs = fn(**kwargs)
+    outputs = fn(msa1, msa2, **kwargs)
     metrics = [_output[-1] for _output in outputs]
     write_metrics(
         metrics, 
@@ -69,8 +69,6 @@ def _rf2t_single(args: Namespace) -> None:
     return _base_command(
         args,
         rf2track_one_vs_many,
-        msa_file1=msa1,
-        msa_file2=msa2,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
         cpu=args.cpu,
@@ -83,8 +81,6 @@ def _dca_single(args: Namespace) -> None:
     return _base_command(
         args,
         dca_one_vs_many,
-        msa_file1=msa1,
-        msa_file2=msa2,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
         apc=args.apc,
@@ -97,8 +93,6 @@ def _dca_many_vs_many(args: Namespace) -> None:
     return _base_command(
         args,
         dca_many_vs_many,
-        msa_files1=msa1,
-        msa_files2=msa2,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
         apc=args.apc,
@@ -111,8 +105,6 @@ def _af2_single(args: Namespace) -> None:
     return _base_command(
         args,
         model_one_vs_many,
-        msa_file1=msa1,
-        msa_file2=msa2,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
         max_recycles=args.recycles,
@@ -126,8 +118,6 @@ def _af2_many_vs_many(args: Namespace) -> None:
     return _base_command(
         args,
         model_many_vs_many,
-        msa_file1=msa1,
-        msa_file2=msa2,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
         max_recycles=args.recycles,

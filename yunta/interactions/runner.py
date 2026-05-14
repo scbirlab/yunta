@@ -74,12 +74,12 @@ def _calculate_interaction_blocks(
             n = chunk_i.shape[-1]
             si = slice(i0, i0 + n)
             block, *others = interaction_fn(
-                np.concatenate([chunk_i, chunk_i], axis=-1),
+                chunk_i,
                 chain_a_length=max(0, paired_msa.chain_a_length - i0),
                 **kwargs,
             )
             # Self-contacts are in the off-diagonal of the duplicated block
-            result[si, si] = block[:n, n:]
+            result[si, si] = block
             for o in others:
                 _others[(i0, i0, n, n)].append(o)
         # Pass 2: off-diagonal blocks
