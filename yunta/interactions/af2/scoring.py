@@ -3,16 +3,14 @@ from typing import Optional, Tuple
 from numpy import ndarray
 import numpy as np
 from numpy.typing import ArrayLike
+from scipy.spatial.distance import cdist
 
 
-def _euclidean_dist(
-    x: ArrayLike, 
-    y: Optional[ArrayLike] = None
-) -> float:
-    if y is None:
-        y = x
-    x, y = x[...,np.newaxis], y[...,np.newaxis,:]
-    return np.sqrt(np.sum(np.square(x - y), axis=-1))
+# def _euclidean_dist(x, y=None):
+#     if y is None:
+#         y = x
+#     x, y = x[:, np.newaxis, :], y[np.newaxis, :, :]    # (N,1,D) and (1,M,D)
+#     return np.sqrt(np.sum(np.square(x - y), axis=-1))  # (N, M)
 
 
 def _pdockq(
@@ -37,7 +35,7 @@ def get_contact_matrix(unrelaxed_protein) -> Tuple[ndarray, ...]:
     from .src_speedppi.alphafold import protein
     #Get the pdb and Cβ coords
     _, cβ_coords = protein.to_pdb(unrelaxed_protein)
-    contact_dists = _euclidean_dist(cβ_coords)
+    contact_dists = cdist(cβ_coords, cβ_coords)
     inv_contact_dists = 1. / contact_dists
     return inv_contact_dists, contact_dists
 

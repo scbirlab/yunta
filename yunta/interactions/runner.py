@@ -188,8 +188,8 @@ class Runner(ABC):
             **kwargs
         )
         result_interaction = results[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
-        info = self.post_run(paired_msa, others, **kwargs)
         scores = score_contact_map(result_interaction)
+        info = self.post_run(paired_msa, others, **kwargs)
         metrics = self.metric_container(
             ID=paired_msa.name, 
             seq_len=paired_msa.seq_length,

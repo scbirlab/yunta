@@ -68,7 +68,7 @@ def model_protein_interaction(
     )
     print_err(f"[INFO] Doing forward pass...")
     result = model.predict(processed_feature_dict)
-    print_err(f"[INFO] It took AF2 {time() - t0} s to predict the interaction.")
+    print_err(f"[INFO] It took AF2 {(time() - t0):.2f} s to predict the interaction.")
     return feature_dict, processed_feature_dict, result
 
 
@@ -96,7 +96,7 @@ def get_unrelaxed_protein(
     )
 
 def af2(
-    paired_msa: PairedMSA,
+    paired_msa: ArrayLike,
     chain_a_length: int,
     _id: str,
     model: Optional[Callable] = None,
@@ -108,7 +108,7 @@ def af2(
         chain_a_length=chain_a_length,
         _id=_id,
         model=model,
-        seed=seed
+        seed=seed,
     )
     unrelaxed_protein = get_unrelaxed_protein(
         processed_feature_dict, 
