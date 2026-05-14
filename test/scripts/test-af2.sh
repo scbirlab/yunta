@@ -35,6 +35,8 @@ make_stub("test/inputs/DYR_YEAST.a3m")
 make_stub("test/inputs/CAPZA_YEAST.a3m")
 
 '
+
+export JAX_COMPILATION_CACHE_DIR=".cache/jax-xla"
 yunta af2-single "test/inputs/DYR_YEAST_stub.a3m" -2 "test/inputs/CAPZA_YEAST_stub.a3m" \
     --plot test/outputs/af2-single \
     -o test/outputs/af2-single.tsv

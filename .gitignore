@@ -11,6 +11,8 @@
 __pycache__
 .pytest_cache
 
+.cache/
+
 # Sphinx
 /docs/build/
 /docs/_autosummary/
