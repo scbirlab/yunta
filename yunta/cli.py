@@ -113,53 +113,26 @@ def _af2_single(args: Namespace) -> None:
         model_one_vs_many,
         msa_file1=msa1,
         msa_file2=msa2,
-        max_recycles=args.recycles,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
-    )
-    msa1, msa2 = _msa_from_list_file(args)
-
-    outputs = model_one_vs_many(
-        msa_file1=msa1,
-        msa_file2=msa2,
         max_recycles=args.recycles,
-        output_dir=args.output,
         param_dir=args.params,
-        interaction_map="builtin" if args.interspecies else None,
-        enforce_ref_match=args.strict_match,
     )
-
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-
-    return None
 
 
 @clicommand(message="Modelling sets of PPIs with the following parameters")
 def _af2_many_vs_many(args: Namespace) -> None:
     from .screening import model_many_vs_many
-    msa1, msa2 = _msa_from_list_file(args)
-
-    outputs = model_many_vs_many(
-        msa_files1=msa1,
-        msa_files2=msa2,
-        output_dir=args.output,
-        max_recycles=args.recycles,
-        param_dir=args.params,
+    return _base_command(
+        args,
+        model_many_vs_many,
+        msa_file1=msa1,
+        msa_file2=msa2,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
+        max_recycles=args.recycles,
+        param_dir=args.params,
     )
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-    return None
 
 
 def main() -> None:
