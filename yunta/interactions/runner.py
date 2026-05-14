@@ -42,13 +42,20 @@ def _calculate_interaction_blocks(
     paired_msa: PairedMSA,
     interaction_fn: Callable,
     chunksize: int = DEFAULT_CHUNKSIZE,
+    use_sequences: bool = False,
+    use_id: bool = False,
     **kwargs
 ) -> Tuple[ndarray, dict]:
 
     import numpy as np
     from tqdm.auto import tqdm
 
-    token_ids = np.asarray(paired_msa.sequence_token_ids)
+    if not use_sequences:
+        token_ids = np.asarray(paired_msa.sequence_token_ids)
+    else:
+        token_ids = np.asarray([list(line) for line in paired_msa.sequences()])
+    if use_id:
+        kwargs |= {"_id": paired_msa.name}
     n_msa_columns = token_ids.shape[-1]
 
     if n_msa_columns > chunksize:
@@ -114,6 +121,8 @@ def _calculate_interaction_blocks(
 class Runner(ABC):
 
     metric_container = InteractionMetrics
+    use_sequences = False
+    use_id = False
 
     @staticmethod
     def make_model(cpu=True, **kwargs):
@@ -166,6 +175,8 @@ class Runner(ABC):
             paired_msa,
             interaction_fn=partial(self._run_chunk, model=model),
             chunksize=chunksize,
+            use_sequences=self.use_sequences,
+            use_id=self.use_id,
             **kwargs
         )
         result_interaction = results[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
@@ -189,6 +200,8 @@ class Runner(ABC):
 class AF2Runner(Runner):
 
     metric_container = AF2Metrics
+    use_sequences = True
+    use_id = True
 
     @staticmethod
     def make_model(
@@ -206,7 +219,9 @@ class AF2Runner(Runner):
 
     @staticmethod
     def _run_chunk(
-        paired_msa: PairedMSA,
+        paired_msa: ArrayLike,
+        chain_a_length: int,
+        _id: str,
         model: Optional[Callable] = None,
         seed: Optional[int] = None,
         **kwargs
@@ -214,6 +229,8 @@ class AF2Runner(Runner):
         from .af2 import run_af2
         return run_af2(
             paired_msa=paired_msa,
+            chain_a_length=chain_a_length,
+            _id=_id,
             model=model,
             seed=seed,
         )

@@ -19,28 +19,28 @@ from ...io import save_design
 from ...structs.msa import PairedMSA
 
 
-def _get_af2_features(paired_msa: PairedMSA) -> Dict[str, Union[str, int]]:
+def _get_af2_features(msa_seqs, chain_a_length, _id) -> Dict[str, Union[str, int]]:
 
     from .src_speedppi.alphafold.data import foldonly
 
-    msa_seqs = paired_msa.sequences()
     # The msas must be str representations of the blocked+paired MSAs here
     # Define the data pipeline
-    ids = list(getattr(name, "unique_id") for name in paired_msa.lines[0].name)
+    ids = _id.split("-")
     feature_dict = foldonly.FoldDataPipeline().process(
         input_sequence=msa_seqs[0],  # reference
         input_description="_".join(sorted(ids)),
         input_msas=[msa_seqs],
     )
     # Introduce chain breaks for oligomers
-    feature_dict['residue_index'][paired_msa.chain_a_length:] += 200
-    feature_dict['ID'] = "-".join(sorted(ids))
-    feature_dict['uniprot_id_1'], feature_dict['uniprot_id_2'] = ids
+    feature_dict['residue_index'][chain_a_length:] += 200
+    feature_dict['ID'] = _id
     return feature_dict
 
 
 def model_protein_interaction(
-    paired_msa: PairedMSA,
+    msa_seqs, 
+    chain_a_length: int,
+    _id: str,
     model: Optional[Callable] = None,
     seed: Optional[int] = None,
     model_kwargs: Optional[Mapping[str, Any]] = None
@@ -56,7 +56,7 @@ def model_protein_interaction(
         from .modelling import make_model_runner
         model = make_model_runner(**(model_kwargs or {}))
 
-    feature_dict = _get_af2_features(paired_msa)
+    feature_dict = _get_af2_features(msa_seqs, chain_a_length, _id)
     print_err(f"[INFO] Running AF2 on pair {feature_dict['ID']}...")
     # Run the model - on GPU
     t0 = time()
@@ -97,12 +97,16 @@ def get_unrelaxed_protein(
 
 def af2(
     paired_msa: PairedMSA,
+    chain_a_length: int,
+    _id: str,
     model: Optional[Callable] = None,
     seed: Optional[int] = None
 ) -> ndarray:
     
     feature_dict, processed_feature_dict, prediction_result = model_protein_interaction(
-        paired_msa=paired_msa,
+        msa_seqs=paired_msa,
+        chain_a_length=chain_a_length,
+        _id=_id,
         model=model,
         seed=seed
     )

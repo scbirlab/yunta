@@ -19,7 +19,9 @@ INPUT_IS1=test/inputs/crypto/Q5CPK5_CRYPI.a3m
 INPUT_IS2=test/inputs/human/EZRI_HUMAN.a3m
 
 yunta af2-single $INPUT1 -2 "${INPUTB[@]}" \
-    -o test/outputs/af2-many 
+    --plot test/outputs/af2-single \
+    -o test/outputs/af2-single.tsv
 yunta af2-single $FILE1 -2 $FILE2 \
     --list-file \
-    -o test/outputs/af2-many-list
+    --plot test/outputs/af2-many-list \
+    -o test/outputs/af2-many-list.tsv
