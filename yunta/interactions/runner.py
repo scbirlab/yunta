@@ -80,6 +80,8 @@ def _calculate_interaction_blocks(
             i0 = i * chunksize
             n = chunk_i.shape[-1]
             si = slice(i0, i0 + n)
+            if use_sequences:
+                chunk_i = ["".join(line) for line in chunk_i]
             block, *others = interaction_fn(
                 chunk_i,
                 chain_a_length=max(0, min(n, paired_msa.chain_a_length - i0)),
@@ -97,8 +99,12 @@ def _calculate_interaction_blocks(
             i0, j0 = i * chunksize, j * chunksize
             n, m = chunk_i.shape[-1], chunk_j.shape[-1]
             si, sj = slice(i0, i0 + n), slice(j0, j0 + m)
+            if use_sequences:
+                chunk_i = ["".join(line) for line in np.concatenate([chunk_i, chunk_j], axis=-1)]
+            else:
+                concat_chunk = np.concatenate([chunk_i, chunk_j], axis=-1)
             block, *others = interaction_fn(
-                np.concatenate([chunk_i, chunk_j], axis=-1),
+                concat_chunk,
                 chain_a_length=max(0, paired_msa.chain_a_length - i0),
                 **kwargs,
             )
