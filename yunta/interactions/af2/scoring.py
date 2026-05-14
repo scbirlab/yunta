@@ -52,7 +52,7 @@ def _post_score_ppi(
     n_contacts = contacts.shape[0]
     info = {
         "n_contacts": n_contacts,
-        "mean_plddt": 0.,
+        "mean_interface_plddt": 0.,
         "pdockq": 0.,
     }
     if n_contacts >= 1:  # no contacts
@@ -63,8 +63,9 @@ def _post_score_ppi(
             p[np.unique(contacts[:,i])] 
             for i, p in enumerate([plddt1, plddt2])
         ])
+        mean_interface_plddt = np.mean(_plddt)
         info |= {
-            "mean_plddt": np.mean(_plddt), 
-            "pdockq": _pdockq(info["mean_plddt"], info["n_contacts"]),
+            "mean_interface_plddt": mean_interface_plddt, 
+            "pdockq": _pdockq(mean_interface_plddt, info["n_contacts"]),
         }
     return info

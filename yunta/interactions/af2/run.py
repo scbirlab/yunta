@@ -141,12 +141,14 @@ def post_af2(
         )
         for (i0, j0, n, m), (contact_block, plddt_block) in results.items():
             si, sj = slice(i0, i0 + n), slice(j0, j0 + m)
-            contact_dist[si, si] = contact_block[:n, :n]
-            contact_dist[si, sj] = contact_block[:n, n:]
-            contact_dist[sj, si] = contact_block[n:, :n]
-            contact_dist[sj, sj] = contact_block[n:, n:]
             plddt_block = plddt_block["plddt"]
-            plddt[si], plddt[sj] = plddt_block[:n], plddt_block[n:]
+            if i0 == j0:
+                contact_dist[si, si] = contact_block
+                plddt[si] = plddt_block[:n]
+            else:
+                contact_dist[si, sj] = contact_block[:n, n:]
+                contact_dist[sj, si] = contact_block[n:, :n]
+                plddt[sj] = plddt_block[n:]
     contact_dist_interaction = contact_dist[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
     return _post_score_ppi(
         contact_dist_interaction,
@@ -155,6 +157,9 @@ def post_af2(
         contact_radius=8.,
     )
 
+
+# TODO: Wire this back in one day
+# Needs function parameters to be updated.
 def save_pdb(
     paired_msa: PairedMSA,
     model: Optional[Callable] = None,
@@ -163,9 +168,11 @@ def save_pdb(
 ):
     from .src_speedppi.alphafold import protein
     feature_dict, processed_feature_dict, prediction_result = model_protein_interaction(
-        paired_msa=paired_msa,
+        msa_seqs=paired_msa,
+        chain_a_length=paired_msa.chain_a_length,
+        _id=paired_msa.name,
         model=model,
-        seed=seed
+        seed=seed,
     )
     unrelaxed_protein = get_unrelaxed_protein(
         processed_feature_dict, 
