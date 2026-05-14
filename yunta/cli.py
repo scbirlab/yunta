@@ -47,80 +47,79 @@ def _msa_from_list_file(args: Namespace) -> tuple:
     return msa1, msa2
 
 
+def _base_command(args: Namespace, fn: Callable, **kwargs):
+    msa1, msa2 = _msa_from_list_file(args)
+    outputs = fn(**kwargs)
+    metrics = [_output[-1] for _output in outputs]
+    write_metrics(
+        metrics, 
+        filename=args.output,
+    )
+    if args.plot is not None:
+        for _output in outputs:
+            _plot_results(
+                *_output, 
+                output_dir=args.plot,
+            )
+    return None
+
 @clicommand(message="Making RosettaFold-2track prediction with the following parameters")
 def _rf2t_single(args: Namespace) -> None:
     from .screening import rf2track_one_vs_many
-
-    msa1, msa2 = _msa_from_list_file(args)
-    outputs = rf2track_one_vs_many(
+    return _base_command(
+        args,
+        rf2track_one_vs_many,
         msa_file1=msa1,
         msa_file2=msa2,
-        cpu=args.cpu,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
+        cpu=args.cpu,
     )
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-
-    return None
 
 
 @clicommand(message="Calculating DCA for a pair of MSAs with the following parameters")
 def _dca_single(args: Namespace) -> None:
     from .screening import dca_one_vs_many
-
-    msa1, msa2 = _msa_from_list_file(args)
-
-    outputs = dca_one_vs_many(
+    return _base_command(
+        args,
+        dca_one_vs_many,
         msa_file1=msa1,
         msa_file2=msa2,
-        apc=args.apc,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
+        apc=args.apc,
     )
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-
-    return None
 
 
 @clicommand(message="Calculating DCA between pairs of MSAs with the following parameters")
 def _dca_many_vs_many(args: Namespace) -> None:
     from .screening import dca_many_vs_many
-    msa1, msa2 = _msa_from_list_file(args)
-
-    outputs = dca_many_vs_many(
+    return _base_command(
+        args,
+        dca_many_vs_many,
         msa_files1=msa1,
         msa_files2=msa2,
-        apc=args.apc,
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
+        apc=args.apc,
     )
-
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-
-    return None
 
 
 @clicommand(message="Modelling one PPI with the following parameters")
 def _af2_single(args: Namespace) -> None:
     from .screening import model_one_vs_many
+    return _base_command(
+        args,
+        model_one_vs_many,
+        msa_file1=msa1,
+        msa_file2=msa2,
+        max_recycles=args.recycles,
+        interaction_map="builtin" if args.interspecies else None,
+        enforce_ref_match=args.strict_match,
+    )
     msa1, msa2 = _msa_from_list_file(args)
 
-    metric = model_one_vs_many(
+    outputs = model_one_vs_many(
         msa_file1=msa1,
         msa_file2=msa2,
         max_recycles=args.recycles,
@@ -145,7 +144,7 @@ def _af2_many_vs_many(args: Namespace) -> None:
     from .screening import model_many_vs_many
     msa1, msa2 = _msa_from_list_file(args)
 
-    metrics = model_many_vs_many(
+    outputs = model_many_vs_many(
         msa_files1=msa1,
         msa_files2=msa2,
         output_dir=args.output,
@@ -154,7 +153,7 @@ def _af2_many_vs_many(args: Namespace) -> None:
         interaction_map="builtin" if args.interspecies else None,
         enforce_ref_match=args.strict_match,
     )
-
+    metrics = [_output[-1] for _output in outputs]
     write_metrics(metrics, 
                   filename=args.output)
     if args.plot is not None:

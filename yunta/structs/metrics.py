@@ -96,3 +96,4 @@ class AF2Metrics(InteractionMetrics):
     mean_interface_plddt: float = field(metadata={"named": True})
     pdockq: float = field(metadata={"named": True})
     seed: int = field(metadata={"named": True})
+    max_recycles: int = field(metadata={"named": True})

@@ -192,9 +192,18 @@ class AF2Runner(Runner):
     metric_container = AF2Metrics
 
     @staticmethod
-    def make_model(cpu=True, **kwargs):
+    def make_model(
+        cpu=True, 
+        max_recycles: int = 10,
+        param_dir: Optional[str] = None,
+        **kwargs
+    ):
         from .af2.modelling import make_model_runner
-        return make_model_runner(**kwargs)
+        return make_model_runner(
+            max_recycles=max_recycles, 
+            param_dir=param_dir, 
+            **kwargs,
+        )
 
     @staticmethod
     def _run_chunk(

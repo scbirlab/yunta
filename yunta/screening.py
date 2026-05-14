@@ -147,6 +147,8 @@ def model_one_vs_many(
     interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
     enforce_ref_match: bool = False,
     seed: Optional[int] = None,
+    max_recycles: int = 10,
+    param_dir: Optional[str] = None
     **kwargs
 ) -> List[AF2Metrics]:
     return _screen_one_vs_many(
@@ -156,7 +158,9 @@ def model_one_vs_many(
         max_gap_fraction=max_gap_fraction,
         interaction_map=interaction_map,
         enforce_ref_match=enforce_ref_match,
+        max_recycles=max_recycles,
         seed=seed,
+        model_kwargs={"max_recycles": max_recycles, "param_dir": param_dir},
         **kwargs
     )
     
@@ -167,15 +171,19 @@ def model_many_vs_many(
     max_gap_fraction: float = DEFAULT_MAX_GAP_FRACTION,
     interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
     enforce_ref_match: bool = False,
+    max_recycles: int = 10,
+    param_dir: Optional[str] = None,
     seed: Optional[int] = None,
     **kwargs
 ) -> List[AF2Metrics]:
     return _screen_many_vs_many(
         model_one_vs_many, 
-        msa_files1=msa_files1, 
+        msa_files1=msa_files1,
         msa_files2=msa_files2,
         max_gap_fraction=max_gap_fraction,
         interaction_map=interaction_map,
         enforce_ref_match=enforce_ref_match,
         seed=seed,
+        model_kwargs={"max_recycles": max_recycles, "param_dir": param_dir}
+        **kwargs
     )
