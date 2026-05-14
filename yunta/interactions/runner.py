@@ -113,6 +113,8 @@ def _calculate_interaction_blocks(
             for o in others:
                 _others[(i0,j0,n,m)].append(o)
     else:
+        if use_sequences:
+            token_ids = ["".join(line) for line in token_ids]
         result, *others = interaction_fn(
             token_ids, 
             chain_a_length=paired_msa.chain_a_length,
