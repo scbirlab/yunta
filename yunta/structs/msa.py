@@ -121,8 +121,9 @@ class MSADescription:
         if species_id == -1:
             self.generic_species_name = None 
         else:
+            normed_name = _name_normalizer([self.info.get('OS', '')])
             try:
-                self.generic_species_name = _name_normalizer([self.info['OS']])[0]
+                self.generic_species_name = normed_name[0]
             except IndexError:
                 self.generic_species_name = self.info['OS']
             
@@ -188,7 +189,7 @@ class PairedMSALine(MSALine):
         self.gap_fraction = self.sequence.count('-') / float(len(self))
 
     def __repr__(self) -> str:
-        return "Paired " + super().__repr__(self)
+        return "Paired " + super().__repr__()
 
     def __str__(self) -> str:
         return f">{_PAIRED_SPACER.join(map(str, self.name))} {_PAIRED_SPACER.join(map(str, self.description))}\n{self.sequence}"
@@ -383,9 +384,10 @@ class PairedMSA(MSA):
         msa2: Optional[MSA] = None, 
         blocked: bool = False,
         interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
-        strict_species_match: bool = False
+        strict_species_match: bool = False,
+        enforce_ref_match: bool = False,
+        name_attr: str = "species_id"
     ) -> Tuple[List[PairedMSALine], int]:
-        name_attr = "species_id"
         if strict_species_match or interaction_map is None:
             fallback_name_attr = name_attr
         else:
@@ -395,6 +397,7 @@ class PairedMSA(MSA):
         msa1_known, msa2_known = (msa.filter_by_known_species() for msa in (msa1, msa2))
 
         if interaction_map is None:
+            strict_intraspecies = True
             all_species = [
                 getattr(line.description, name_attr)
                 for msa in (msa1_known, msa2_known) 
@@ -404,8 +407,10 @@ class PairedMSA(MSA):
                 _species: set([_species]) for _species in all_species
             }
         elif interaction_map == "builtin":
+            strict_intraspecies = False
             interaction_map = organism_interactions()
         elif isinstance(interaction_map, Mapping):
+            strict_intraspecies = False
             interaction_map = {
                 key: set(cast(val, to=list) + [key]) 
                 for key, val in interaction_map.items()
@@ -418,25 +423,32 @@ class PairedMSA(MSA):
                 """
             )
 
-        try:
-            PairedMSA._check_ref_match(
-                msa1=msa1_known, 
-                msa2=msa2_known, 
-                interaction_map=interaction_map, 
-                name_attr=name_attr,
-            )
-        except AttributeError as e:
-            if fallback_name_attr != name_attr:
+        if enforce_ref_match or strict_intraspecies:
+            try:
                 PairedMSA._check_ref_match(
                     msa1=msa1_known, 
                     msa2=msa2_known, 
                     interaction_map=interaction_map, 
-                    name_attr=fallback_name_attr,
+                    name_attr=name_attr,
                 )
-                query_name_attr = fallback_name_attr
+            except AttributeError as e:
+                if fallback_name_attr != name_attr:
+                    PairedMSA._check_ref_match(
+                        msa1=msa1_known, 
+                        msa2=msa2_known, 
+                        interaction_map=interaction_map, 
+                        name_attr=fallback_name_attr,
+                    )
+                    query_name_attr = fallback_name_attr
+                else:
+                    raise e
             else:
-                raise e
+                query_name_attr = name_attr
         else:
+            print_err(
+                "[WARN] HPI map constraint relaxed for query sequences. "
+                "Aligned sequence pairing still enforced."
+            )
             query_name_attr = name_attr
         
         #Get the matches
@@ -549,19 +561,23 @@ class PairedMSA(MSA):
 
     @classmethod
     def from_msa(
-            cls, 
-            msa1: MSA, 
-            msa2: Optional[MSA] = None,
-            blocked: bool = False,
-            interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
-            strict_species_match: bool = False
-        ) -> 'PairedMSA':
+        cls, 
+        msa1: MSA, 
+        msa2: Optional[MSA] = None,
+        blocked: bool = False,
+        interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+        strict_species_match: bool = False,
+        enforce_ref_match: bool = False,
+        **kwargs
+    ) -> 'PairedMSA':
         msa_lines, chain_a_length = cls.join_msa(
             msa1, 
             msa2, 
             blocked=blocked, 
             interaction_map=interaction_map, 
             strict_species_match=strict_species_match,
+            enforce_ref_match=enforce_ref_match,
+            **kwargs
         )
         return cls(lines=msa_lines, chain_a_length=chain_a_length)
 
@@ -570,7 +586,8 @@ class PairedMSA(MSA):
         cls, 
         file1: Union[str, TextIOWrapper],
         file2: Optional[Union[str, TextIOWrapper]] = None,
-        blocked: bool = False
+        blocked: bool = False,
+        **kwargs
     ) -> 'PairedMSA':
         """Read A3M file(s).
 
@@ -580,7 +597,7 @@ class PairedMSA(MSA):
             msa2 = deepcopy(msa1)
         else:
             msa2 = MSA.from_file(file2)
-        return cls.from_msa(msa1, msa2, blocked=blocked)
+        return cls.from_msa(msa1, msa2, blocked=blocked, **kwargs)
 
     def __str__(self) -> str:
         return "Paired " + super().__str__()

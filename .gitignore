@@ -11,6 +11,8 @@
 __pycache__
 .pytest_cache
 
+.cache/
+
 # Sphinx
 /docs/build/
 /docs/_autosummary/
@@ -18,6 +20,10 @@ __pycache__
 /docs/Makefile
 
 /test/outputs/
+/test/inputs/*_stub.a3m
+
+/yunta/data/*.json.gz
+/yunta/data/*.json
 
 # virtualenv/venv directories
 /venv/

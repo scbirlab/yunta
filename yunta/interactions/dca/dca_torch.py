@@ -98,36 +98,37 @@ with tf.Graph().as_default():
         rp.close()
 ```
 """
-
-
-from typing import Optional, Union
-
-from io import TextIOWrapper
-import sys
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from carabiner import print_err
-import numpy as np
+
 from numpy.typing import ArrayLike
 import torch
-from torch import FloatTensor, Tensor
-import torch.nn.functional as F
+if TYPE_CHECKING:
+    from numpy import ndarray
+    from torch import FloatTensor, Tensor
+else:
+    ndarray = Any
+    FloatTensor, Tensor = Any, Any
 
-from .structs.msa import _A3M_ALPHABET, _A3M_ALPHABET_SIZE
+from ...structs.msa import _A3M_ALPHABET, _A3M_ALPHABET_SIZE
 
 NON_GAP_IDX = [i for i, char in enumerate(_A3M_ALPHABET) if char != "-"]
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = "cpu"
 
 def _torch_cov(
     x: Tensor, 
     w: Optional[Tensor] = None
 ) -> FloatTensor:
+    import torch
     if w is None:
         return torch.cov(x)
     else:
         num_points = torch.sum(w) - torch.sqrt(torch.mean(w))
         x_mean = torch.sum(
             x * w.unsqueeze(-1), 
-            dim=0, keepdim=True
+            dim=0, 
+            keepdim=True,
         ) / num_points
         x = (x - x_mean) * torch.sqrt(w.unsqueeze(-1))
         return torch.matmul(x.transpose(-2, -1), x) / num_points
@@ -137,6 +138,7 @@ def two_site_frequency_count(
     x: Tensor,
     min_identical_fraction: float = .8,
 ):
+    import torch
     n_row, n_col, alphabet_size = x.shape  # (M, L, 21)
     dot_product = torch.tensordot(
         x, x, 
@@ -154,8 +156,11 @@ def _cov_shrinkage(
     bias_correction: Optional[Tensor] = None,
     shrinkage_factor: Optional[float] = None,
     effective_sequence_number: Optional[int] = None,
-    device = DEVICE
-) -> FloatTensor:  
+    device = None
+) -> FloatTensor:
+    import torch
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     covariance_matrix = _torch_cov(
         x,  # (M, L * 21)
         w=bias_correction,
@@ -177,15 +182,22 @@ def _calculate_dca(
     gpu: bool = True, 
     min_identical_fraction: float = .8,
     shrinkage_factor: float = 4.5,
-    dtype=torch.float32
+    dtype: str = "float32"
 ) -> FloatTensor:
+    import torch
+    import torch.nn.functional as F
+
+    if dtype == "float64":
+        dtype = torch.float64
+    else:
+        dtype = torch.float32
     device = torch.device("cuda" if (torch.cuda.is_available() and gpu) else "cpu")
     x = x.to(device)
     n_row, n_col = x.shape
     msa_one_hot = F.one_hot(
         x.to(torch.long), 
         num_classes=_A3M_ALPHABET_SIZE,
-    ).to(torch.float32)   # (M, L, 21)
+    ).to(dtype)   # (M, L, 21)
     (
         dot_product, 
         bias_correction, 
@@ -246,17 +258,22 @@ def calculate_dca(
     gpu: bool = True,
     min_identical_fraction: float = .8,
     shrinkage_factor: float = 4.5,
-    dtype=torch.float32
-) -> np.ndarray:
+    dtype: str = "float32"
+) -> ndarray:
 
     """
     
     """
+    import torch
+    if dtype == "float64":
+        dtype = torch.float64
+    else:
+        dtype = torch.float32
     with torch.set_grad_enabled(False):
         msa_token_ids = torch.tensor(
             msa,
             dtype=torch.int64,
-            device=DEVICE,
+            device=torch.device("cuda" if (torch.cuda.is_available() and gpu) else "cpu"),
         )
         kwargs = {
             "apc": apc,
@@ -271,7 +288,7 @@ def calculate_dca(
                 **kwargs,
             )
         except torch.cuda.OutOfMemoryError as e:
-            print_err("GPU memory exhausted; falling back to CPU.")
+            print_err("[WARN] GPU memory exhausted; falling back to CPU.")
             wip = _calculate_dca(
                 msa_token_ids.to('cpu'), 
                 gpu=False,

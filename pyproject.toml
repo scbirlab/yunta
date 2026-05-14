@@ -1,12 +1,12 @@
 [project]
 name = "yunta"
-version = "0.0.7"
+version = "0.1.0"
 authors = [
   { name="Eachan Johnson", email="eachan.johnson@crick.ac.uk" },
 ]
 description = "Predicting protein-protein interactions and structures from multiple sequence alignments."
 readme = "README.md"
-requires-python = ">=3.8,<3.14"
+requires-python = ">=3.9,<3.14"
 license = {file = "LICENSE"}
 keywords = ["science", "biology", "systems biology", "biochemistry", "machine learning", "analysis", "deep learning", "alphafold2", "rosettafold"]
 

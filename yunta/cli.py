@@ -1,5 +1,5 @@
 """Command-line interface for yunta."""
-
+from typing import Callable
 from argparse import FileType, Namespace
 import os
 import sys
@@ -47,115 +47,82 @@ def _msa_from_list_file(args: Namespace) -> tuple:
     return msa1, msa2
 
 
+def _base_command(args: Namespace, fn: Callable, **kwargs):
+    msa1, msa2 = _msa_from_list_file(args)
+    outputs = fn(msa1, msa2, **kwargs)
+    metrics = [_output[-1] for _output in outputs]
+    write_metrics(
+        metrics, 
+        filename=args.output,
+    )
+    if args.plot is not None:
+        for _output in outputs:
+            _plot_results(
+                *_output, 
+                output_dir=args.plot,
+            )
+    return None
+
 @clicommand(message="Making RosettaFold-2track prediction with the following parameters")
 def _rf2t_single(args: Namespace) -> None:
     from .screening import rf2track_one_vs_many
-
-    msa1, msa2 = _msa_from_list_file(args)
-
-    print_err(f"Running RF-2t using {msa1} as reference.")
-    outputs = rf2track_one_vs_many(
-        msa_file1=msa1,
-        msa_file2=msa2,
-        cpu=args.cpu,
+    return _base_command(
+        args,
+        rf2track_one_vs_many,
         interaction_map="builtin" if args.interspecies else None,
+        enforce_ref_match=args.strict_match,
+        cpu=args.cpu,
     )
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-
-    return None
 
 
 @clicommand(message="Calculating DCA for a pair of MSAs with the following parameters")
 def _dca_single(args: Namespace) -> None:
     from .screening import dca_one_vs_many
-
-    msa1, msa2 = _msa_from_list_file(args)
-
-    outputs = dca_one_vs_many(
-        msa_file1=msa1,
-        msa_file2=msa2,
-        apc=args.apc,
+    return _base_command(
+        args,
+        dca_one_vs_many,
         interaction_map="builtin" if args.interspecies else None,
+        enforce_ref_match=args.strict_match,
+        apc=args.apc,
     )
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-
-    return None
 
 
 @clicommand(message="Calculating DCA between pairs of MSAs with the following parameters")
 def _dca_many_vs_many(args: Namespace) -> None:
     from .screening import dca_many_vs_many
-    msa1, msa2 = _msa_from_list_file(args)
-
-    outputs = dca_many_vs_many(
-        msa_files1=msa1,
-        msa_files2=msa2,
-        apc=args.apc,
+    return _base_command(
+        args,
+        dca_many_vs_many,
         interaction_map="builtin" if args.interspecies else None,
+        enforce_ref_match=args.strict_match,
+        apc=args.apc,
     )
-
-    metrics = [_output[-1] for _output in outputs]
-    write_metrics(metrics, 
-                  filename=args.output)
-    if args.plot is not None:
-        for _output in outputs:
-            _plot_results(*_output, output_dir=args.plot)
-
-    return None
 
 
 @clicommand(message="Modelling one PPI with the following parameters")
 def _af2_single(args: Namespace) -> None:
     from .screening import model_one_vs_many
-    msa1, msa2 = _msa_from_list_file(args)
-
-    metric = model_one_vs_many(
-        msa_file1=msa1,
-        msa_file2=msa2,
-        max_recycles=args.recycles,
-        output_dir=args.output,
-        param_dir=args.params,
+    return _base_command(
+        args,
+        model_one_vs_many,
         interaction_map="builtin" if args.interspecies else None,
+        enforce_ref_match=args.strict_match,
+        max_recycles=args.recycles,
+        param_dir=args.params,
     )
-
-    output_filename = os.path.join(args.output, f"_all_metrics.tsv")
-    print_err(f"Saving metrics as {output_filename}")
-    write_metrics(metric, 
-                  filename=output_filename)
-
-    return None
 
 
 @clicommand(message="Modelling sets of PPIs with the following parameters")
 def _af2_many_vs_many(args: Namespace) -> None:
     from .screening import model_many_vs_many
-    msa1, msa2 = _msa_from_list_file(args)
-
-    metrics = model_many_vs_many(
-        msa_files1=msa1,
-        msa_files2=msa2,
-        output_dir=args.output,
+    return _base_command(
+        args,
+        model_many_vs_many,
+        interaction_map="builtin" if args.interspecies else None,
+        enforce_ref_match=args.strict_match,
         max_recycles=args.recycles,
         param_dir=args.params,
-        interaction_map="builtin" if args.interspecies else None,
     )
-
-    output_filename = os.path.join(args.output, "_all_metrics.tsv")
-    print_err(f"Saving metrics as {output_filename}")
-    write_metrics(metrics, 
-                  filename=output_filename)
-
-    return None
 
 
 def main() -> None:
@@ -193,6 +160,12 @@ def main() -> None:
     cpu = CLIOption('--cpu', '-c', 
                     action='store_true',
                     help='Whether to use CPU only. Default: use GPU if available.')
+    strict_match = CLIOption(
+        '--strict-match', '-S', 
+        action='store_true',
+        help='For interspecies, whether query MSA lines should be known interacting species.',
+    )
+    
     output_file = CLIOption('--output', '-o', 
                             default=sys.stdout,
                             type=FileType('w'), 
@@ -204,7 +177,7 @@ def main() -> None:
     interspecies = CLIOption(
         '--interspecies', '-i', 
         action='store_true',
-        help='Whether the MSAs are from the same species. Default: Not inter-species.',
+        help='MSAs are from different species, enables built-in host-pathogen interaction map. Default: Not inter-species.',
     )
     params = CLIOption('--params', '-w', 
                        type=str,
@@ -215,26 +188,38 @@ def main() -> None:
                        default=10,
                        help='Maximum number of recyles through the model.')
 
-    rf2t_single = CLICommand('rf2t-single', 
-                            description='Calculate RF-2track contacts for between one protein and a series of others.',
-                            main=_rf2t_single,
-                            options=[inputs, inputs_list2, list_file, interspecies, output_file, plot, cpu])
-    dca_single = CLICommand('dca-single', 
-                            description='Calculate DCA for one protein-protein interaction.',
-                            main=_dca_single,
-                            options=[inputs, inputs_list2, list_file, interspecies, output_file, plot, apc])
-    dca_many = CLICommand('dca-many', 
-                          description='Calculate DCA between two sets of proteins, or all pairs in one set of proteins.',
-                          main=_dca_many_vs_many,
-                          options=[inputs_list, inputs_list2, list_file, interspecies, apc, output_file, plot])
-    af2_single = CLICommand('af2-single', 
-                            description='Model one protein-protein interaction.',
-                            main=_af2_single,
-                            options=[inputs, inputs_list2, list_file, output, interspecies, params, recycles, plot])
-    af2_many = CLICommand('af2-many', 
-                          description='Model all interactions between two sets of proteins, or all pairs in one set of proteins.',
-                          main=_af2_many_vs_many,
-                          options=[inputs_list, inputs_list2, list_file, interspecies, output, params, recycles, plot])
+    base_opts = [inputs_list2, list_file, interspecies, strict_match, output_file, plot]
+
+    rf2t_single = CLICommand(
+        'rf2t-single', 
+        description='Calculate RF-2track contacts between one protein and a series of others.',
+        main=_rf2t_single,
+        options=[inputs] + base_opts + [cpu],
+    )
+    dca_single = CLICommand(
+        'dca-single', 
+        description='Calculate DCA for one protein-protein interaction.',
+        main=_dca_single,
+        options=[inputs] + base_opts + [apc],
+    )
+    dca_many = CLICommand(
+        'dca-many', 
+        description='Calculate DCA between two sets of proteins, or all pairs in one set of proteins.',
+        main=_dca_many_vs_many,
+        options=[inputs_list] + base_opts + [apc],
+    )
+    af2_single = CLICommand(
+        'af2-single', 
+        description='Model one protein-protein interaction.',
+        main=_af2_single,
+        options=[inputs] + base_opts + [params, recycles],
+    )
+    af2_many = CLICommand(
+        'af2-many', 
+        description='Model all interactions between two sets of proteins, or all pairs in one set of proteins.',
+        main=_af2_many_vs_many,
+        options=[inputs_list] + base_opts + [params, recycles],
+    )
 
     app = CLIApp(
         appname,

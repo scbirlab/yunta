@@ -26,17 +26,17 @@ class ATMRecord:
     B: float = field(init=False)
 
     def __post_init__(self):
-        self.name = self.line[0:6].strip(),
-        self.atm_no = int(self.line[6:11]),
-        self.atm_name = self.line[12:16].strip(),
-        self.atm_alt = self.line[17],
-        self.res_name = self.line[17:20].strip(),
-        self.chain = self.line[21],
-        self.res_no = int(self.line[22:26]),
-        self.insert = self.line[26].strip(),
-        self.resid = self.line[22:29],
-        self.x = float(self.line[30:38]),
-        self.y = float(self.line[38:46]),
-        self.z = float(self.line[46:54]),
-        self.occ = float(self.line[54:60]),
+        self.name = self.line[0:6].strip()
+        self.atm_no = int(self.line[6:11])
+        self.atm_name = self.line[12:16].strip()
+        self.atm_alt = self.line[17]
+        self.res_name = self.line[17:20].strip()
+        self.chain = self.line[21]
+        self.res_no = int(self.line[22:26])
+        self.insert = self.line[26].strip()
+        self.resid = self.line[22:29]
+        self.x = float(self.line[30:38])
+        self.y = float(self.line[38:46])
+        self.z = float(self.line[46:54])
+        self.occ = float(self.line[54:60])
         self.B = float(self.line[60:66])
