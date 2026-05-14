@@ -158,7 +158,6 @@ def model_one_vs_many(
         max_gap_fraction=max_gap_fraction,
         interaction_map=interaction_map,
         enforce_ref_match=enforce_ref_match,
-        max_recycles=max_recycles,
         seed=seed,
         model_kwargs={"max_recycles": max_recycles, "param_dir": param_dir},
         **kwargs
