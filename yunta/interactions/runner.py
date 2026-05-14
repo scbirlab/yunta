@@ -62,7 +62,7 @@ def _calculate_interaction_blocks(
         print_err(f"[INFO] Splitting MSA with {n_msa_columns} columns into pairs of {chunksize}-column chunks.")
         chunks = np.split(token_ids, list(range(chunksize, n_msa_columns, chunksize)), axis=-1)
         n_chunks = len(chunks)
-        n_blocks = n_chunks * n_chunks
+        n_blocks = n_chunks * (n_chunks - 1) // 2
         print_err(f"[INFO] Split MSA with {n_msa_columns} columns into {n_chunks} x {chunksize}-column chunks ({n_blocks} blocks).")
 
         result = np.zeros(
@@ -93,14 +93,14 @@ def _calculate_interaction_blocks(
         # Pass 2: off-diagonal blocks
         for (i, chunk_i), (j, chunk_j) in tqdm(
             combinations(enumerate(chunks), 2), 
-            total=n_chunks * (n_chunks - 1) // 2, 
+            total=n_blocks, 
             desc="Running off-diagonal blocks",
         ):
             i0, j0 = i * chunksize, j * chunksize
             n, m = chunk_i.shape[-1], chunk_j.shape[-1]
             si, sj = slice(i0, i0 + n), slice(j0, j0 + m)
             if use_sequences:
-                chunk_i = ["".join(line) for line in np.concatenate([chunk_i, chunk_j], axis=-1)]
+                concat_chunk = ["".join(line) for line in np.concatenate([chunk_i, chunk_j], axis=-1)]
             else:
                 concat_chunk = np.concatenate([chunk_i, chunk_j], axis=-1)
             block, *others = interaction_fn(
