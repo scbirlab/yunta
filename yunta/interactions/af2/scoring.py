@@ -12,8 +12,7 @@ def _euclidean_dist(
     if y is None:
         y = x
     x, y = x[...,np.newaxis], y[...,np.newaxis,:]
-    return np.sqrt(np.sum(np.square(x - y),
-                   axis=-1))
+    return np.sqrt(np.sum(np.square(x - y), axis=-1))
 
 
 def _pdockq(
