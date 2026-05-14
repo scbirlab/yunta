@@ -16,6 +16,8 @@ from .scoring import score_contact_map
 from ..structs.metrics import AF2Metrics, DCAMetrics, RF2TMetrics, InteractionMetrics
 from ..structs.msa import MSA, PairedMSA
 
+DEFAULT_CHUNKSIZE: int = 750
+
 def _pair_msas(
     msa1: MSA, 
     msa2: Optional[MSA] = None,
@@ -39,11 +41,12 @@ def _pair_msas(
 def _calculate_interaction_blocks(
     paired_msa: PairedMSA,
     interaction_fn: Callable,
-    chunksize: int = 750,
+    chunksize: int = DEFAULT_CHUNKSIZE,
     **kwargs
 ) -> Tuple[ndarray, dict]:
 
     import numpy as np
+    from tqdm.auto import tqdm
 
     token_ids = np.asarray(paired_msa.sequence_token_ids)
     n_msa_columns = token_ids.shape[-1]
@@ -52,14 +55,39 @@ def _calculate_interaction_blocks(
         print_err(f"[INFO] Splitting MSA with {n_msa_columns} columns into pairs of {chunksize}-column chunks.")
         chunks = np.split(token_ids, list(range(chunksize, n_msa_columns, chunksize)), axis=-1)
         n_chunks = len(chunks)
-        print_err(f"[INFO] Split MSA with {n_msa_columns} columns into {n_chunks} x {chunksize}-column chunks.")
+        n_blocks = n_chunks * n_chunks
+        print_err(f"[INFO] Split MSA with {n_msa_columns} columns into {n_chunks} x {chunksize}-column chunks ({n_blocks} blocks).")
 
         result = np.zeros(
             (n_msa_columns, n_msa_columns), 
             dtype=np.float32,
         )
         _others = defaultdict(list)
-        for (i, chunk_i), (j, chunk_j) in combinations(enumerate(chunks), 2):
+        
+        # Pass 1: diagonal blocks — each chunk vs itself
+        for i, chunk_i in enumerate(tqdm(
+            chunks, 
+            total=n_chunks, 
+            desc="Running diagonal blocks",
+        )):
+            i0 = i * chunksize
+            n = chunk_i.shape[-1]
+            si = slice(i0, i0 + n)
+            block, *others = interaction_fn(
+                np.concatenate([chunk_i, chunk_i], axis=-1),
+                chain_a_length=max(0, paired_msa.chain_a_length - i0),
+                **kwargs,
+            )
+            # Self-contacts are in the off-diagonal of the duplicated block
+            result[si, si] = block[:n, n:]
+            for o in others:
+                _others[(i0, i0, n, n)].append(o)
+        # Pass 2: off-diagonal blocks
+        for (i, chunk_i), (j, chunk_j) in tqdm(
+            combinations(enumerate(chunks), 2), 
+            total=n_blocks, 
+            desc="Running off-diagonal blocks",
+        ):
             i0, j0 = i * chunksize, j * chunksize
             n, m = chunk_i.shape[-1], chunk_j.shape[-1]
             si, sj = slice(i0, i0 + n), slice(j0, j0 + m)
@@ -68,8 +96,8 @@ def _calculate_interaction_blocks(
                 chain_a_length=max(0, paired_msa.chain_a_length - i0),
                 **kwargs,
             )
-            result[si, si], result[si, sj] = block[:n, :n], block[:n, n:]
-            result[sj, si], result[sj, sj] = block[n:, :n], block[n:, n:]
+            result[si, sj] = block[:n, n:]
+            result[sj, si] = block[n:, :n]
             for o in others:
                 _others[(i0,j0,n,m)].append(o)
     else:
@@ -117,7 +145,7 @@ class Runner(ABC):
         interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
         cpu: bool = True,
         model: Optional[Callable] = None,
-        chunksize: int = 1500,
+        chunksize: int = DEFAULT_CHUNKSIZE,
         enforce_ref_match: bool = False,
         model_kwargs: Optional[dict] = None,
         **kwargs

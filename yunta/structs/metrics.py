@@ -32,8 +32,8 @@ class InteractionMetrics:
     focality: float = field(metadata={"named": True})
     top_A: Iterable[int] = field(metadata={"named": True})
     top_B: Iterable[int] = field(metadata={"named": True})
-    weights_A: Iterable[float] = field(metadata={"named": True})
-    weights_B: Iterable[float] = field(metadata={"named": True})
+    # weights_A: Iterable[float] = field(metadata={"named": True})
+    # weights_B: Iterable[float] = field(metadata={"named": True})
 
     def __post_init__(self):
         self.uniprot_id_1, self.uniprot_id_2 = self.ID.split('-')
@@ -77,7 +77,7 @@ class DCAMetrics(InteractionMetrics):
     """Storage for DCA metrics.
     """
     _name: ClassVar[str] = "DCA"
-    apc: bool
+    apc: bool = field(metadata={"named": True})
 
 
 @dataclass
@@ -92,6 +92,7 @@ class AF2Metrics(InteractionMetrics):
     """Storage for AlphaFold2 model metrics.
     """
     _name: ClassVar[str] = "AF2"
-    n_contacts: int
-    mean_interface_plddt: float
-    pdockq: float
+    n_contacts: int = field(metadata={"named": True})
+    mean_interface_plddt: float = field(metadata={"named": True})
+    pdockq: float = field(metadata={"named": True})
+    seed: int = field(metadata={"named": True})

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -eox pipefail
+set -eoux pipefail
 
 INPUT_INTER1=test/inputs/Q38361_D29_integrase.a3m
 INPUT_INTER2=test/inputs/P9WGF1_Mtb_Mmr.a3m
