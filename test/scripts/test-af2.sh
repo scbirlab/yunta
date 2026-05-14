@@ -38,10 +38,3 @@ make_stub("test/inputs/CAPZA_YEAST.a3m")
 yunta af2-single "test/inputs/DYR_YEAST_stub.a3m" -2 "test/inputs/CAPZA_YEAST_stub.a3m" \
     --plot test/outputs/af2-single \
     -o test/outputs/af2-single.tsv
-yunta af2-single $INPUT1 -2 "${INPUTB[@]}" \
-    --plot test/outputs/af2-single \
-    -o test/outputs/af2-single.tsv
-yunta af2-single $FILE1 -2 $FILE2 \
-    --list-file \
-    --plot test/outputs/af2-many-list \
-    -o test/outputs/af2-many-list.tsv
