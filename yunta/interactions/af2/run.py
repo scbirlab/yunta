@@ -80,7 +80,7 @@ def get_unrelaxed_protein(
     
     """
     import numpy as np
-    from ...src_speedppi.alphafold import protein, residue_constants
+    from .src_speedppi.alphafold import protein, residue_constants
     plddt_b_factors = np.repeat(
         prediction_result['plddt'][:, np.newaxis], 
         residue_constants.atom_type_num, 
