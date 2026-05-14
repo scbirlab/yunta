@@ -52,8 +52,6 @@ def _rf2t_single(args: Namespace) -> None:
     from .screening import rf2track_one_vs_many
 
     msa1, msa2 = _msa_from_list_file(args)
-
-    print_err(f"Running RF-2t using {msa1} as reference.")
     outputs = rf2track_one_vs_many(
         msa_file1=msa1,
         msa_file2=msa2,
@@ -133,7 +131,6 @@ def _af2_single(args: Namespace) -> None:
     )
 
     output_filename = os.path.join(args.output, f"_all_metrics.tsv")
-    print_err(f"Saving metrics as {output_filename}")
     write_metrics(metric, 
                   filename=output_filename)
 
@@ -156,7 +153,6 @@ def _af2_many_vs_many(args: Namespace) -> None:
     )
 
     output_filename = os.path.join(args.output, "_all_metrics.tsv")
-    print_err(f"Saving metrics as {output_filename}")
     write_metrics(
         metrics, 
         filename=output_filename,

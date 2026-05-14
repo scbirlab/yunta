@@ -6,6 +6,7 @@ from dataclasses import is_dataclass, asdict
 from io import TextIOWrapper
 import os
 
+from carabiner import print_err
 from carabiner.cast import cast
 
 
@@ -51,6 +52,7 @@ def write_metrics(
     metrics = list(metrics)
     if not all(is_dataclass(m) for m in metrics):
         raise TypeError("All metrics must be dataclass objects.")
+    print_err(f"[INFO] Writing metrics to {filename}")
     for i, metric in enumerate(metrics):
         metric.write(
             filename=filename,
