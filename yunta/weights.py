@@ -18,7 +18,7 @@ def get_model_weights(
 
     """Get the model weights filename.
     
-    If not present in `path/.weights/af2-sppid`, download there.
+    If not present in `path/.weights/af2-yunta`, download there.
 
     """
     if path is None:
@@ -48,7 +48,7 @@ def get_model_weights(
             os.remove(temp_file)
             raise e
         with tarfile.open(temp_file) as tar:
-            print_err(f"[INFO  Extracting weights from {temp_file} to {weight_dir}...")
+            print_err(f"[INFO]  Extracting weights from {temp_file} to {weight_dir}...")
             tar.extractall(
                 path=weight_dir, 
                 members=files_to_keep, 

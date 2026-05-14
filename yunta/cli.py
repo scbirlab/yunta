@@ -130,9 +130,12 @@ def _af2_single(args: Namespace) -> None:
         enforce_ref_match=args.strict_match,
     )
 
-    output_filename = os.path.join(args.output, f"_all_metrics.tsv")
-    write_metrics(metric, 
-                  filename=output_filename)
+    metrics = [_output[-1] for _output in outputs]
+    write_metrics(metrics, 
+                  filename=args.output)
+    if args.plot is not None:
+        for _output in outputs:
+            _plot_results(*_output, output_dir=args.plot)
 
     return None
 
@@ -152,11 +155,11 @@ def _af2_many_vs_many(args: Namespace) -> None:
         enforce_ref_match=args.strict_match,
     )
 
-    output_filename = os.path.join(args.output, "_all_metrics.tsv")
-    write_metrics(
-        metrics, 
-        filename=output_filename,
-    )
+    write_metrics(metrics, 
+                  filename=args.output)
+    if args.plot is not None:
+        for _output in outputs:
+            _plot_results(*_output, output_dir=args.plot)
     return None
 
 
@@ -212,7 +215,7 @@ def main() -> None:
     interspecies = CLIOption(
         '--interspecies', '-i', 
         action='store_true',
-        help='Whether the MSAs are from the same species. Default: Not inter-species.',
+        help='MSAs are from differnt species, enables built-in host-pathogen interaction map. Default: Not inter-species.',
     )
     params = CLIOption('--params', '-w', 
                        type=str,

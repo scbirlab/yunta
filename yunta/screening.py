@@ -132,7 +132,7 @@ def dca_many_vs_many(
     return _screen_many_vs_many(
         dca_one_vs_many, 
         msa_files1=msa_files1, 
-        msa_files2=msa_files1, 
+        msa_files2=msa_files2, 
         apc=apc,
         max_gap_fraction=max_gap_fraction,
         interaction_map=interaction_map,

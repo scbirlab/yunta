@@ -121,8 +121,9 @@ class MSADescription:
         if species_id == -1:
             self.generic_species_name = None 
         else:
+            normed_name = _name_normalizer([self.info.get('OS', '')])
             try:
-                self.generic_species_name = _name_normalizer([self.info['OS']])[0]
+                self.generic_species_name = normed_name[0]
             except IndexError:
                 self.generic_species_name = self.info['OS']
             
@@ -188,7 +189,7 @@ class PairedMSALine(MSALine):
         self.gap_fraction = self.sequence.count('-') / float(len(self))
 
     def __repr__(self) -> str:
-        return "Paired " + super().__repr__(self)
+        return "Paired " + super().__repr__()
 
     def __str__(self) -> str:
         return f">{_PAIRED_SPACER.join(map(str, self.name))} {_PAIRED_SPACER.join(map(str, self.description))}\n{self.sequence}"
