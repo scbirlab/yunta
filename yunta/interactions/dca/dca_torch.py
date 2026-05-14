@@ -187,7 +187,10 @@ def _calculate_dca(
     import torch
     import torch.nn.functional as F
 
-    dtype = torch.getattr(dtype, torch.float32)
+    if dtype == "float64":
+        dtype = torch.float64
+    else:
+        dtype = torch.float32
     device = torch.device("cuda" if (torch.cuda.is_available() and gpu) else "cpu")
     x = x.to(device)
     n_row, n_col = x.shape
@@ -262,6 +265,10 @@ def calculate_dca(
     
     """
     import torch
+    if dtype == "float64":
+        dtype = torch.float64
+    else:
+        dtype = torch.float32
     with torch.set_grad_enabled(False):
         msa_token_ids = torch.tensor(
             msa,
@@ -272,7 +279,7 @@ def calculate_dca(
             "apc": apc,
             "min_identical_fraction": min_identical_fraction,
             "shrinkage_factor": shrinkage_factor,
-            "dtype": torch.getattr(dtype, torch.float32),
+            "dtype": dtype,
         }
         try:
             wip = _calculate_dca(

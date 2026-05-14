@@ -211,6 +211,15 @@ class DCARunner(Runner):
             apc=apc,
         ), {}
 
+    @staticmethod
+    def post_run(
+        paired_msa: PairedMSA,
+        results: Dict[Tuple, Any],
+        apc: bool = True,
+        **kwargs
+    ):
+        return {"apc": apc}
+
 
 
 class RF2TRunner(Runner):
