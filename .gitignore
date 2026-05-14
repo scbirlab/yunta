@@ -18,6 +18,10 @@ __pycache__
 /docs/Makefile
 
 /test/outputs/
+/test/inputs/*_stub.a3m
+
+/yunta/data/*.json.gz
+/yunta/data/*.json
 
 # virtualenv/venv directories
 /venv/
