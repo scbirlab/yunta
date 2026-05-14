@@ -36,6 +36,7 @@ def get_contact_matrix(unrelaxed_protein) -> Tuple[ndarray, ...]:
     #Get the pdb and Cβ coords
     _, cβ_coords = protein.to_pdb(unrelaxed_protein)
     contact_dists = cdist(cβ_coords, cβ_coords)
+    assert contact_dists.shape[0] == contact_dists.shape[1]
     inv_contact_dists = 1. / contact_dists
     return inv_contact_dists, contact_dists
 
