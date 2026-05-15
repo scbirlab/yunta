@@ -19,8 +19,11 @@ def _get_top_n_idx(a: ArrayLike, top_n: int = 5, descending: bool = False):
 
 
 def score_contact_map(M: ArrayLike, top_n: int = 5) -> dict:
-    U, s, Vt = np.linalg.svd(M, full_matrices=False)
-    if M.size > 0:
+    try:
+        U, s, Vt = np.linalg.svd(M, full_matrices=False)
+    except np.linalg.LinAlgError:
+        U, s, Vt = np.zeros((0, M.shape[0])), np.zeros((0,)), np.zeros((M.shape[1], 0)), 
+    if M.size > 0 and s.size > 0 and U.size > 0 and Vt.size > 0:
         weightsA = U[:, 0]
         weightsB = Vt[0, :]
         sigma1 = s[0]
@@ -52,5 +55,3 @@ def score_contact_map(M: ArrayLike, top_n: int = 5) -> dict:
         # "weights_A": weightsA,   # per-residue weights, protein A
         # "weights_B": weightsB,  # per-residue weights, protein B
     }
-
-
