@@ -26,16 +26,22 @@ def _pair_msas(
     interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
     enforce_ref_match: bool = False
 ) -> PairedMSA:
-    return (
-        PairedMSA.from_msa(
+    try:
+        paired_msa = PairedMSA.from_msa(
             msa1, 
             msa2, 
             blocked=blocked, 
             interaction_map=interaction_map,
             enforce_ref_match=enforce_ref_match,
         )
-        .filter_by_gap_fraction(max_gap_fraction)
-    )
+    except AttributeError as e:  # no pairs!
+        print_err(f"[WARN] Skipping pair,", e)
+        return None
+    else:
+        return (
+            paired_msa
+            .filter_by_gap_fraction(max_gap_fraction)
+        )
 
 
 def _calculate_interaction_blocks(
@@ -173,6 +179,8 @@ class Runner(ABC):
             interaction_map=interaction_map,
             enforce_ref_match=enforce_ref_match,
         )
+        if paired_msa is None:  # failure
+            return None, None, None
         print_err("[INFO] Generated", paired_msa)
         neff = paired_msa.neff()
 
@@ -185,7 +193,7 @@ class Runner(ABC):
             chunksize=chunksize,
             use_sequences=self.use_sequences,
             use_id=self.use_id,
-            **kwargs
+            **kwargs,
         )
         result_interaction = results[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
         scores = score_contact_map(result_interaction)

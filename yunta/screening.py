@@ -46,15 +46,18 @@ def _screen_one_vs_many(
     for msa2 in tqdm(msa_file2):
         if msa2 is not None:
             msa2 = MSA.from_file(msa2)
-        results.append(
-            runner().run(
-                msa1=msa1,
-                msa2=msa2,
-                max_gap_fraction=max_gap_fraction, 
-                interaction_map=interaction_map,
-                **kwargs,
-            )
+        result = runner().run(
+            msa1=msa1,
+            msa2=msa2,
+            max_gap_fraction=max_gap_fraction, 
+            interaction_map=interaction_map,
+            **kwargs,
         )
+        if result[0] is not None:
+            results.append(result)
+        else:
+            print_err(f"[WARN] Failed calculation for {msa1}, {msa2}. Continuing.")
+            continue
     return results
 
 

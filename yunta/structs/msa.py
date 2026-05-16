@@ -579,7 +579,10 @@ class PairedMSA(MSA):
             enforce_ref_match=enforce_ref_match,
             **kwargs
         )
-        return cls(lines=msa_lines, chain_a_length=chain_a_length)
+        if len(msa_lines) > 0:
+            return cls(lines=msa_lines, chain_a_length=chain_a_length)
+        else:
+            raise AttributeError(f"Pairing {msa1} and {msa2} resulted in no pairs.")
 
     @classmethod
     def from_file(
