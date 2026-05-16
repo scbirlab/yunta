@@ -44,6 +44,7 @@ def get_contact_matrix(unrelaxed_protein) -> Tuple[ndarray, ...]:
 def _post_score_ppi(
     contact_dists: ArrayLike,
     plddt: ArrayLike,
+    ptm: float,
     chain_a_length: int,
     contact_radius: float = 8.
 ):
@@ -53,6 +54,7 @@ def _post_score_ppi(
         "n_contacts": n_contacts,
         "mean_interface_plddt": 0.,
         "pdockq": 0.,
+        "ptm": ptm,
     }
     if n_contacts >= 1:  # no contacts
         #Get plddt per chain

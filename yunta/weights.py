@@ -24,7 +24,7 @@ def get_model_weights(
     if path is None:
         path = os.path.expanduser("~")
     if model_name is None:
-        model_name = "model_1"
+        model_name = "model_1_ptm" "model_1"
 
     weight_dir = os.path.join(os.path.realpath(path), ".weights", "af2-yunta", "params")
     weight_filename = os.path.join(weight_dir, f"params_{model_name}.npz")
