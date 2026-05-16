@@ -129,7 +129,7 @@ def post_af2(
         (i0, j0, n, m), (contact_block, plddt_block) = next(iter(results.items()))
         contact_dist = contact_block
         plddt = plddt_block["plddt"]
-        ptm = plddt_block["plddt"].get("ptm")
+        ptm = plddt_block.get("ptm")
     else:
         n_msa_columns = paired_msa.seq_length
         contact_dist = np.zeros(
