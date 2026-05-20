@@ -34,7 +34,11 @@ class MSAName:
     >>> MSAName('>sp|P07807|DYR_YEAST').entry_name
     'DYR_YEAST'
     >>> MSAName('>UniRef90_A0A1B2').unique_id
-    '__NO_ENTRY_ID__'
+    'A0A1B2'
+    >>> MSAName('>UniRef90_A0A1B2').database
+    'UniRef90'
+    >>> MSAName('>MGYP000745883360').unique_id
+    'MGYP000745883360'
 
     """
     name: str
