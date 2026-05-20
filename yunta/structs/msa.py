@@ -64,7 +64,7 @@ class MSAName:
                 self.database = "__NO_NAME__"
                 self.unique_id = self.name if self.name else "__NO_ENTRY_ID__"
                 self.entry_name = "__NO_ENTRY_NAME__"
-        elif self.name.startswith("Uniref"):
+        elif self.name.startswith("UniRef"):
             parts = self.name.split("_", maxsplit=1)
             if len(parts) == 2:
                 self.database, self.unique_id = parts
@@ -184,7 +184,7 @@ class MSALine:
     gap_fraction: float = field(init=False)
 
     def __post_init__(self):
-        self._input_sequence = sequence
+        self._input_sequence = self.sequence
         self.sequence = ''.join(letter for letter in self._input_sequence if not letter.islower())  # remove insertions(?)
         self.name = MSAName(self.name)
         self.unique_id = self.name.unique_id
@@ -205,6 +205,7 @@ class MSALine:
 class PairedMSALine(MSALine):
 
     def __post_init__(self):
+        self._input_sequence = self.sequence
         if not _PAIRED_SPACER in self.name:
             raise ValueError(f"Paired MSA must contain '{_PAIRED_SPACER}' separator in name: {self.name}")
         self.name = tuple(MSAName(name) for name in self.name.split(_PAIRED_SPACER))
@@ -501,10 +502,9 @@ class PairedMSA(MSA):
         
         #Get the matches
         query_pair = tuple(
-            getattr(
-                msa.lines[0].description, name_attr, 
-                getattr(msa.lines[0].description, fallback_name_attr),
-            )
+            getattr(msa.lines[0].description, name_attr)
+            if getattr(msa.lines[0].description, name_attr) in interaction_map
+            else getattr(msa.lines[0].description, fallback_name_attr)
             for msa in (msa1_known, msa2_known)
         )
 
@@ -517,10 +517,9 @@ class PairedMSA(MSA):
                         for _attr in (name_attr, fallback_name_attr)
                     )
                 ] for _species in set(
-                    getattr(
-                        line.description, name_attr,
-                        getattr(line.description, fallback_name_attr),
-                    )
+                    getattr(line.description, name_attr)
+                    if getattr(line.description, name_attr) in interaction_map
+                    else getattr(line.description, fallback_name_attr)
                     for line in msa.lines
                 )
             } for msa in (msa1_known, msa2_known)
