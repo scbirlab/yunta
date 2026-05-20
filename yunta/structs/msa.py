@@ -1,6 +1,6 @@
 """Data structures for multiple sequence alignments."""
 
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields, replace
 from io import TextIOWrapper
