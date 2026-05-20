@@ -250,6 +250,16 @@ class MSA:
     def gap_fraction(self) -> list[float]:
         return [line.gap_fraction for line in self.lines]
 
+    def truncate(self, n: int) -> 'MSA':
+        return replace(self, lines=[
+            MSALine(
+                sequence=line.sequence[:n],
+                description=str(line.description),
+                name=str(line.name),
+            ) 
+            for line in self.lines
+        ])
+
     @classmethod
     def from_file(cls, file: str | TextIOWrapper) -> 'MSA':
         from bioino import FastaCollection
@@ -331,16 +341,15 @@ class MSA:
         return None
 
 
+@dataclass
 class PairedMSA(MSA):
-
     """Paired MSA object which can be used for co-evolutionary analyses.
     """
+    chain_a_length: int
+    chain_b_length: int = field(init=False)
 
-    def __init__(self, 
-                 chain_a_length: int, 
-                 *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.chain_a_length = chain_a_length
+    def __post_init__(self):
+        super().__post_init__()
         self.chain_b_length = self.seq_length - self.chain_a_length
 
     def split(
@@ -348,7 +357,7 @@ class PairedMSA(MSA):
     ):
         msa1 = MSA([
             MSALine(
-                sequence=line.sequence[self.chain_a_length:],
+                sequence=line.sequence[:self.chain_a_length],
                 description=str(line.description[0]),
                 name=str(line.name[0]),
             ) 
@@ -356,7 +365,7 @@ class PairedMSA(MSA):
         ])
         msa2 = MSA([
             MSALine(
-                sequence=line.sequence[:self.chain_a_length],
+                sequence=line.sequence[self.chain_a_length:],
                 description=str(line.description[1]),
                 name=str(line.name[1]),
             )
