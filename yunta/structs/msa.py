@@ -55,28 +55,19 @@ class MSAName:
         else:
             self._input_name = self.name
         self.name = self._input_name.removeprefix(">").rstrip()  # Strip out leading ">"
+        db, _id, _name = None, None, None
         if "|" in self.name:
             parts = self.name.split("|", maxsplit=2)
             if len(parts) == 3:
-                self.database, self.unique_id, self.entry_name = parts
-            else:
-                # Preserve useful identifier rather than sentinel
-                self.database = "__NO_NAME__"
-                self.unique_id = self.name if self.name else "__NO_ENTRY_ID__"
-                self.entry_name = "__NO_ENTRY_NAME__"
+                db, _id, _name = parts
         elif self.name.startswith("UniRef"):
             parts = self.name.split("_", maxsplit=1)
-            if len(parts) == 2:
-                self.database, self.unique_id = parts
-            else:
-                # Preserve useful identifier rather than sentinel
-                self.database = "__NO_NAME__"
-                self.unique_id = self.name if self.name else "__NO_ENTRY_ID__"
-                self.entry_name = "__NO_ENTRY_NAME__"
-        else:
-            self.database = "__NO_NAME__"
-            self.unique_id = self.name if self.name else "__NO_ENTRY_ID__"
-            self.entry_name = "__NO_ENTRY_NAME__"
+            db = parts[0]
+            _id = parts[1] if len(parts) == 2 else None
+        
+        self.database = db or "__NO_DB_NAME__"
+        self.unique_id = _id or self.name or "__NO_ENTRY_ID__"
+        self.entry_name = _name or _id or self.name or "__NO_ENTRY_NAME__"
 
     def __str__(self) -> str:
         return self.name
