@@ -38,7 +38,6 @@ class MSAName:
 
     """
     name: str
-    input_name: str = field(init=False)
     database: str = field(init=False)
     unique_id: str = field(init=False)
     entry_name: str = field(init=False)
@@ -46,17 +45,34 @@ class MSAName:
     def __post_init__(self):
         if not isinstance(self.name, str):
             try:
-                self.input_name = "".join(self.name)
+                self._input_name = "".join(self.name)
             except TypeError:
                 raise TypeError(f"MSA name `{self.name}` is type {type(self.name)}.")
         else:
-            self.input_name = self.name
-        self.name = "".join(dropwhile(lambda s: s == ">", self.name)).rstrip()  # Strip out leading ">"
-        try:
-            self.database, self.unique_id, self.entry_name = self.name.split("|")
-        except ValueError:
-            # print_err(self.name)
-            self.database, self.unique_id, self.entry_name = "__NO_NAME__", "__NO_ENTRY_ID__", "__NO_ENTRY_NAME__"
+            self._input_name = self.name
+        self.name = self._input_name.removeprefix(">").rstrip()  # Strip out leading ">"
+        if "|" in self.name:
+            parts = self.name.split("|", maxsplit=2)
+            if len(parts) == 3:
+                self.database, self.unique_id, self.entry_name = parts
+            else:
+                # Preserve useful identifier rather than sentinel
+                self.database = "__NO_NAME__"
+                self.unique_id = self.name if self.name else "__NO_ENTRY_ID__"
+                self.entry_name = "__NO_ENTRY_NAME__"
+        elif self.name.startswith("Uniref"):
+            parts = self.name.split("_", maxsplit=1)
+            if len(parts) == 2:
+                self.database, self.unique_id = parts
+            else:
+                # Preserve useful identifier rather than sentinel
+                self.database = "__NO_NAME__"
+                self.unique_id = self.name if self.name else "__NO_ENTRY_ID__"
+                self.entry_name = "__NO_ENTRY_NAME__"
+        else:
+            self.database = "__NO_NAME__"
+            self.unique_id = self.name if self.name else "__NO_ENTRY_ID__"
+            self.entry_name = "__NO_ENTRY_NAME__"
 
     def __str__(self) -> str:
         return self.name
@@ -107,10 +123,9 @@ class MSADescription:
                 val = int(val)
             info[key] = val
         self.info = info
-        if "OX" in self.info:  # NCBI identifier. Doesn't exist for everything
-            species_id = f"NCBI:{self.info['OX']}"
-        elif "TaxID" in self.info:
-            species_id = f"NCBI:{self.info['TaxID']}"
+        self.taxon_id = self.info.get("OX", self.info.get("TaxID", -1))
+        if self.taxon_id > 0:  # NCBI identifier. Doesn't exist for everything
+            species_id = f"NCBI:{self.taxon_id}"
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
         else:
@@ -118,14 +133,19 @@ class MSADescription:
             if self.description != '__BLOCK_GAPS__' and self._verbose:
                 print_err(f"[WARN] MSA has no species info. Description string: {self.description.rstrip()}")
         self.species_id = species_id
+        
         if species_id == -1:
-            self.generic_species_name = None 
+            self.generic_species_name = None
         else:
-            normed_name = _name_normalizer([self.info.get('OS', '')])
-            try:
-                self.generic_species_name = normed_name[0]
-            except IndexError:
-                self.generic_species_name = self.info['OS']
+            os_val = self.info.get('OS', '')
+            if os_val:
+                normed_name = _name_normalizer([os_val])
+                try:
+                    self.generic_species_name = normed_name[0]
+                except IndexError:
+                    self.generic_species_name = os_val
+            else:
+                self.generic_species_name = None
             
     def __str__(self) -> str:
         return self.description
@@ -160,7 +180,8 @@ class MSALine:
     gap_fraction: float = field(init=False)
 
     def __post_init__(self):
-        self.sequence = ''.join(letter for letter in self.sequence if not letter.islower())  # remove insertions(?)
+        self._input_sequence = sequence
+        self.sequence = ''.join(letter for letter in self._input_sequence if not letter.islower())  # remove insertions(?)
         self.name = MSAName(self.name)
         self.unique_id = self.name.unique_id
         self.entry_name = self.name.entry_name
@@ -174,7 +195,7 @@ class MSALine:
         return f"MSALine(name='{self.name}', length={len(self)})"
 
     def __str__(self) -> str:
-        return f">{str(self.name)} {str(self.description)}\n{self.sequence}"
+        return f">{str(self.name)} {str(self.description)}\n{self._input_sequence}"
 
 
 class PairedMSALine(MSALine):
@@ -192,7 +213,7 @@ class PairedMSALine(MSALine):
         return "Paired " + super().__repr__()
 
     def __str__(self) -> str:
-        return f">{_PAIRED_SPACER.join(map(str, self.name))} {_PAIRED_SPACER.join(map(str, self.description))}\n{self.sequence}"
+        return f">{_PAIRED_SPACER.join(map(str, self.name))} {_PAIRED_SPACER.join(map(str, self.description))}\n{self._input_sequence}"
 
 
 @dataclass
@@ -476,9 +497,10 @@ class PairedMSA(MSA):
         
         #Get the matches
         query_pair = tuple(
-            getattr(msa.lines[0].description, name_attr)
-            if getattr(msa.lines[0].description, name_attr) in interaction_map
-            else getattr(msa.lines[0].description, fallback_name_attr)
+            getattr(
+                msa.lines[0].description, name_attr, 
+                getattr(msa.lines[0].description, fallback_name_attr),
+            )
             for msa in (msa1_known, msa2_known)
         )
 
@@ -491,9 +513,10 @@ class PairedMSA(MSA):
                         for _attr in (name_attr, fallback_name_attr)
                     )
                 ] for _species in set(
-                    getattr(line.description, name_attr)
-                    if getattr(line.description, name_attr) in interaction_map
-                    else getattr(line.description, fallback_name_attr)
+                    getattr(
+                        line.description, name_attr,
+                        getattr(line.description, fallback_name_attr),
+                    )
                     for line in msa.lines
                 )
             } for msa in (msa1_known, msa2_known)
@@ -553,7 +576,10 @@ class PairedMSA(MSA):
                     )
                 ] for lines in (msa1.lines, msa2.lines)
             )
-            msa1, msa2 = (msa._filter_by_index(idx) for idx, msa in zip((idx1, idx2), (msa1, msa2)))
+            msa1, msa2 = (
+                msa._filter_by_index(idx) 
+                for idx, msa in zip((idx1, idx2), (msa1, msa2))
+            )
             msa_lines += PairedMSA.__make_blocked(msa1, msa2)
         
         return msa_lines, msa1.seq_length
