@@ -2,7 +2,7 @@
 
 from typing import Iterable, List, Mapping, Tuple, Optional, Union
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from io import TextIOWrapper
 from itertools import dropwhile, product
 import sys
@@ -322,6 +322,29 @@ class PairedMSA(MSA):
         super().__init__(*args, **kwargs)
         self.chain_a_length = chain_a_length
         self.chain_b_length = self.seq_length - self.chain_a_length
+
+    def split(
+        self
+    ):
+        msa1 = MSA([
+            replace(
+                line, 
+                sequence=line.sequence[self.chain_a_length:],
+                description=line.description.split(_PAIRED_SPACER)[0],
+                name=line.name.split(_PAIRED_SPACER)[0],
+            ) 
+            for line in self.lines
+        ])
+        msa2 = MSA([
+            replace(
+                line, 
+                sequence=line.sequence[:self.chain_a_length],
+                description=line.description.split(_PAIRED_SPACER)[1],
+                name=line.name.split(_PAIRED_SPACER)[1],
+            )
+            for line in self.lines
+        ])
+        return msa1, msa2
 
     @staticmethod
     def _check_ref_match(
