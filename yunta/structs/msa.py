@@ -1,6 +1,6 @@
 """Data structures for multiple sequence alignments."""
 
-from typing import Iterable, List, Mapping, Tuple, Optional, Union
+from typing import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields, replace
 from io import TextIOWrapper
@@ -98,7 +98,7 @@ class MSADescription:
     description: str
     species_id: str = field(init=False)
     prefix: str = field(init=False)
-    info: Mapping[str, Union[int, str]] = field(init=False)
+    info: Mapping[str, int | str] = field(init=False)
     _verbose: bool = False
 
     def __post_init__(self):
@@ -122,7 +122,7 @@ class MSADescription:
         if taxon_id:  # NCBI identifier. Doesn't exist for everything
             if isinstance(taxon_id, str) and taxon_id.isdigit():
                 self.taxon_id = int(taxon_id)
-            species_id = f"NCBI:{self.taxon_id}"
+            species_id = f"NCBI:{taxon_id}"
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
         else:
@@ -244,14 +244,14 @@ class MSA:
             for line in self.lines
         ]
 
-    def sequences(self) -> List[str]:
+    def sequences(self) -> list[str]:
         return [line.sequence for line in self.lines]
 
-    def gap_fraction(self) -> List[float]:
+    def gap_fraction(self) -> list[float]:
         return [line.gap_fraction for line in self.lines]
 
     @classmethod
-    def from_file(cls, file: Union[str, TextIOWrapper]) -> 'MSA':
+    def from_file(cls, file: str | TextIOWrapper) -> 'MSA':
         from bioino import FastaCollection
         collection = list(FastaCollection.from_file(file).sequences)
         # print(collection[0])
@@ -368,7 +368,7 @@ class PairedMSA(MSA):
     def _check_ref_match(
         msa1: MSA,
         msa2: MSA,
-        interaction_map: Optional[Mapping[str, Iterable[str]]] = None,
+        interaction_map: Mapping[str, Iterable[str]] | None = None,
         name_attr: str = "species_id"
     ) -> None:
         """Validate that the reference sequences (first lines) of two MSAs
@@ -422,13 +422,13 @@ class PairedMSA(MSA):
     @staticmethod
     def join_msa(
         msa1: MSA, 
-        msa2: Optional[MSA] = None, 
+        msa2: MSA | None = None, 
         blocked: bool = False,
-        interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+        interaction_map: str | Mapping[str, Iterable[str]] | None = None,
         strict_species_match: bool = False,
         enforce_ref_match: bool = False,
         name_attr: str = "species_id"
-    ) -> Tuple[List[PairedMSALine], int]:
+    ) -> tuple[list[PairedMSALine], int]:
         if strict_species_match or interaction_map is None:
             fallback_name_attr = name_attr
         else:
@@ -584,7 +584,7 @@ class PairedMSA(MSA):
         msa1: MSA, 
         msa2: MSA, 
         gap_char: str = '-'
-    ) -> List[PairedMSALine]:
+    ) -> list[PairedMSALine]:
         gaps1, gaps2 = (gap_char * msa.seq_length for msa in (msa1, msa2))
         # The msas must be str representations of the blocked+paired MSAs here
         block1 = [
@@ -607,9 +607,9 @@ class PairedMSA(MSA):
     def from_msa(
         cls, 
         msa1: MSA, 
-        msa2: Optional[MSA] = None,
+        msa2: MSA | None = None,
         blocked: bool = False,
-        interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+        interaction_map: str | Mapping[str, Iterable[str]] | None = None,
         strict_species_match: bool = False,
         enforce_ref_match: bool = False,
         **kwargs
@@ -631,8 +631,8 @@ class PairedMSA(MSA):
     @classmethod
     def from_file(
         cls, 
-        file1: Union[str, TextIOWrapper],
-        file2: Optional[Union[str, TextIOWrapper]] = None,
+        file1: str | TextIOWrapper,
+        file2: str | TextIOWrapper | None = None,
         blocked: bool = False,
         **kwargs
     ) -> 'PairedMSA':
