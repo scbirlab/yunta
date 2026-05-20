@@ -118,18 +118,18 @@ class MSADescription:
                 val = int(val)
             info[key] = val
         self.info = info
-        taxon_id = self.info.get("OX", self.info.get("TaxID"))
-        if taxon_id is not None and taxon_id.isdigit():  # NCBI identifier. Doesn't exist for everything
-            self.taxon_id = int(taxon_id)
+        taxon_id = self.info.get("OX", self.info.get("TaxID")) or -1
+        if taxon_id:  # NCBI identifier. Doesn't exist for everything
+            if isinstance(taxon_id, str) and taxon_id.isdigit():
+                self.taxon_id = int(taxon_id)
             species_id = f"NCBI:{self.taxon_id}"
-        else:
-            self.taxon_id = -1
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
         else:
             species_id = -1
             if self.description != '__BLOCK_GAPS__' and self._verbose:
                 print_err(f"[WARN] MSA has no species info. Description string: {self.description.rstrip()}")
+        self.taxon_id = taxon_id
         self.species_id = species_id
         
         if species_id == -1:
@@ -347,20 +347,18 @@ class PairedMSA(MSA):
         self
     ):
         msa1 = MSA([
-            replace(
-                line, 
+            MSALine(
                 sequence=line.sequence[self.chain_a_length:],
-                description=line.description.split(_PAIRED_SPACER)[0],
-                name=line.name.split(_PAIRED_SPACER)[0],
+                description=str(line.description[0]),
+                name=str(line.name[0]),
             ) 
             for line in self.lines
         ])
         msa2 = MSA([
-            replace(
-                line, 
+            MSALine(
                 sequence=line.sequence[:self.chain_a_length],
-                description=line.description.split(_PAIRED_SPACER)[1],
-                name=line.name.split(_PAIRED_SPACER)[1],
+                description=str(line.description[1]),
+                name=str(line.name[1]),
             )
             for line in self.lines
         ])
