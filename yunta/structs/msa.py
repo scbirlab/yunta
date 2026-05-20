@@ -127,9 +127,12 @@ class MSADescription:
                 val = int(val)
             info[key] = val
         self.info = info
-        self.taxon_id = self.info.get("OX", self.info.get("TaxID", -1))
-        if self.taxon_id > 0:  # NCBI identifier. Doesn't exist for everything
+        taxon_id = self.info.get("OX", self.info.get("TaxID"))
+        if taxon_id is not None and taxon_id.isdigit():  # NCBI identifier. Doesn't exist for everything
+            self.taxon_id = int(taxon_id)
             species_id = f"NCBI:{self.taxon_id}"
+        else:
+            self.taxon_id = -1
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
         else:
