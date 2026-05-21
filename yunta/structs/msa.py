@@ -119,9 +119,11 @@ class MSADescription:
             info[key] = val
         self.info = info
         taxon_id = self.info.get("OX", self.info.get("TaxID")) or -1
+        if taxon_id == "":
+            taxon_id = -1
+        if isinstance(taxon_id, str) and taxon_id.isdigit():
+            taxon_id = int(taxon_id)
         if taxon_id > -1:  # NCBI identifier. Doesn't exist for everything
-            if isinstance(taxon_id, str) and taxon_id.isdigit():
-                self.taxon_id = int(taxon_id)
             species_id = f"NCBI:{taxon_id}"
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
