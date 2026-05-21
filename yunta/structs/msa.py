@@ -509,7 +509,7 @@ class PairedMSA(MSA):
             for msa in (msa1_known, msa2_known)
         )
 
-        species_msa1, species_msa2  = (
+        species_msa1, species_msa2 = (
             {
                 _species: [
                     line for line in msa.lines 
@@ -523,6 +523,7 @@ class PairedMSA(MSA):
                     else getattr(line.description, fallback_name_attr)
                     for line in msa.lines
                 )
+                if _species is not None
             } for msa in (msa1_known, msa2_known)
         )
         species_pairs = set(product(species_msa1, species_msa2))
@@ -537,7 +538,7 @@ class PairedMSA(MSA):
                 """
             )
             raise KeyError(f"Query species {':'.join(query_pair)} is not among the shared species in the MSAs")
-        species_pairs = [query_pair] + sorted(species_pairs)
+        species_pairs = [query_pair] + sorted(species_pairs, key=lambda p: tuple(s or "" for s in p))
         msa_lines, matched_species = [], set()
         for _sp1, _sp2 in species_pairs:
             _lines1, _lines2 = species_msa1[_sp1], species_msa2[_sp2]
@@ -560,7 +561,8 @@ class PairedMSA(MSA):
                     (_sp2, _sp1, _sp1_name),
                 ]
             ):
-                line1, line2 = _lines1[0], _lines2[0]
+                line1 = min(_lines1, key=lambda l: l.gap_fraction)
+                line2 = min(_lines2, key=lambda l: l.gap_fraction)
                 msa_lines.append(
                     PairedMSALine(
                         name=_PAIRED_SPACER.join([str(line1.name), str(line2.name)]),
