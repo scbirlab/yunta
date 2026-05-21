@@ -129,6 +129,7 @@ def post_af2(
         (i0, j0, n, m), (contact_block, plddt_block) = next(iter(results.items()))
         contact_dist = contact_block
         plddt = plddt_block["plddt"]
+        ptm = plddt_block.get("ptm")
     else:
         n_msa_columns = paired_msa.seq_length
         contact_dist = np.zeros(
@@ -149,10 +150,12 @@ def post_af2(
                 contact_dist[si, sj] = contact_block[:n, n:]
                 contact_dist[sj, si] = contact_block[n:, :n]
                 plddt[sj] = plddt_block[n:]
+        ptm = None
     contact_dist_interaction = contact_dist[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
     return _post_score_ppi(
         contact_dist_interaction,
         plddt,
+        ptm,
         chain_a_length=paired_msa.chain_a_length,
         contact_radius=8.,
     )

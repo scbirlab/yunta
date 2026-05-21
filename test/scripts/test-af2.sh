@@ -22,14 +22,10 @@ python -c '
 from yunta.structs.msa import MSA
 
 def make_stub(f):
-    msa = MSA.from_file(f)
+    msa = MSA.from_file(f).truncate(20)
     # Write a cropped version — first 60 columns
     with open(f.split(".")[0] + "_stub.a3m", "w") as f:
-        for i, line in enumerate(msa.lines):
-            line.sequence = line.sequence[:20]
-            print(str(line), file=f)
-            if i > 40:
-                break
+        msa.write(f)
 
 make_stub("test/inputs/DYR_YEAST.a3m")
 make_stub("test/inputs/CAPZA_YEAST.a3m")

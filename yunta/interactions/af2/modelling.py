@@ -31,7 +31,7 @@ def make_model_runner(
     print_err(f"[INFO] Setting up AlphaFold2 model. XLA platform available: {xla_bridge.get_backend().platform}")
 
     if model_name is None:
-        model_name = 'model_1'
+        model_name = 'model_1_ptm'
     if param_dir is None:
         param_dir = get_model_weights(model_name)
 

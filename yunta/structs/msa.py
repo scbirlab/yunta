@@ -1,8 +1,8 @@
 """Data structures for multiple sequence alignments."""
 
-from typing import Iterable, List, Mapping, Tuple, Optional, Union
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from io import TextIOWrapper
 from itertools import dropwhile, product
 import sys
@@ -34,11 +34,14 @@ class MSAName:
     >>> MSAName('>sp|P07807|DYR_YEAST').entry_name
     'DYR_YEAST'
     >>> MSAName('>UniRef90_A0A1B2').unique_id
-    '__NO_ENTRY_ID__'
+    'A0A1B2'
+    >>> MSAName('>UniRef90_A0A1B2').database
+    'UniRef90'
+    >>> MSAName('>MGYP000745883360').unique_id
+    'MGYP000745883360'
 
     """
     name: str
-    input_name: str = field(init=False)
     database: str = field(init=False)
     unique_id: str = field(init=False)
     entry_name: str = field(init=False)
@@ -46,17 +49,25 @@ class MSAName:
     def __post_init__(self):
         if not isinstance(self.name, str):
             try:
-                self.input_name = "".join(self.name)
+                self._input_name = "".join(self.name)
             except TypeError:
                 raise TypeError(f"MSA name `{self.name}` is type {type(self.name)}.")
         else:
-            self.input_name = self.name
-        self.name = "".join(dropwhile(lambda s: s == ">", self.name)).rstrip()  # Strip out leading ">"
-        try:
-            self.database, self.unique_id, self.entry_name = self.name.split("|")
-        except ValueError:
-            # print_err(self.name)
-            self.database, self.unique_id, self.entry_name = "__NO_NAME__", "__NO_ENTRY_ID__", "__NO_ENTRY_NAME__"
+            self._input_name = self.name
+        self.name = self._input_name.removeprefix(">").rstrip()  # Strip out leading ">"
+        db, _id, _name = None, None, None
+        if "|" in self.name:
+            parts = self.name.split("|", maxsplit=2)
+            if len(parts) == 3:
+                db, _id, _name = parts
+        elif self.name.startswith("UniRef"):
+            parts = self.name.split("_", maxsplit=1)
+            db = parts[0]
+            _id = parts[1] if len(parts) == 2 else None
+        
+        self.database = db or "__NO_DB_NAME__"
+        self.unique_id = _id or self.name or "__NO_ENTRY_ID__"
+        self.entry_name = _name or _id or self.name or "__NO_ENTRY_NAME__"
 
     def __str__(self) -> str:
         return self.name
@@ -87,7 +98,7 @@ class MSADescription:
     description: str
     species_id: str = field(init=False)
     prefix: str = field(init=False)
-    info: Mapping[str, Union[int, str]] = field(init=False)
+    info: Mapping[str, int | str] = field(init=False)
     _verbose: bool = False
 
     def __post_init__(self):
@@ -107,25 +118,32 @@ class MSADescription:
                 val = int(val)
             info[key] = val
         self.info = info
-        if "OX" in self.info:  # NCBI identifier. Doesn't exist for everything
-            species_id = f"NCBI:{self.info['OX']}"
-        elif "TaxID" in self.info:
-            species_id = f"NCBI:{self.info['TaxID']}"
+        taxon_id = self.info.get("OX", self.info.get("TaxID")) or -1
+        if taxon_id > -1:  # NCBI identifier. Doesn't exist for everything
+            if isinstance(taxon_id, str) and taxon_id.isdigit():
+                self.taxon_id = int(taxon_id)
+            species_id = f"NCBI:{taxon_id}"
         elif "OS" in self.info:  # UniProt species name fallback
             species_id = f"Name:{self.info['OS']}"
         else:
             species_id = -1
             if self.description != '__BLOCK_GAPS__' and self._verbose:
                 print_err(f"[WARN] MSA has no species info. Description string: {self.description.rstrip()}")
+        self.taxon_id = taxon_id
         self.species_id = species_id
+        
         if species_id == -1:
-            self.generic_species_name = None 
+            self.generic_species_name = None
         else:
-            normed_name = _name_normalizer([self.info.get('OS', '')])
-            try:
-                self.generic_species_name = normed_name[0]
-            except IndexError:
-                self.generic_species_name = self.info['OS']
+            os_val = self.info.get('OS', '')
+            if os_val:
+                normed_name = _name_normalizer([os_val])
+                try:
+                    self.generic_species_name = normed_name[0]
+                except IndexError:
+                    self.generic_species_name = os_val
+            else:
+                self.generic_species_name = None
             
     def __str__(self) -> str:
         return self.description
@@ -160,7 +178,8 @@ class MSALine:
     gap_fraction: float = field(init=False)
 
     def __post_init__(self):
-        self.sequence = ''.join(letter for letter in self.sequence if not letter.islower())  # remove insertions(?)
+        self._input_sequence = self.sequence
+        self.sequence = ''.join(letter for letter in self._input_sequence if not letter.islower())  # remove insertions(?)
         self.name = MSAName(self.name)
         self.unique_id = self.name.unique_id
         self.entry_name = self.name.entry_name
@@ -174,12 +193,13 @@ class MSALine:
         return f"MSALine(name='{self.name}', length={len(self)})"
 
     def __str__(self) -> str:
-        return f">{str(self.name)} {str(self.description)}\n{self.sequence}"
+        return f">{str(self.name)} {str(self.description)}\n{self._input_sequence}"
 
 
 class PairedMSALine(MSALine):
 
     def __post_init__(self):
+        self._input_sequence = self.sequence
         if not _PAIRED_SPACER in self.name:
             raise ValueError(f"Paired MSA must contain '{_PAIRED_SPACER}' separator in name: {self.name}")
         self.name = tuple(MSAName(name) for name in self.name.split(_PAIRED_SPACER))
@@ -192,7 +212,7 @@ class PairedMSALine(MSALine):
         return "Paired " + super().__repr__()
 
     def __str__(self) -> str:
-        return f">{_PAIRED_SPACER.join(map(str, self.name))} {_PAIRED_SPACER.join(map(str, self.description))}\n{self.sequence}"
+        return f">{_PAIRED_SPACER.join(map(str, self.name))} {_PAIRED_SPACER.join(map(str, self.description))}\n{self._input_sequence}"
 
 
 @dataclass
@@ -224,14 +244,24 @@ class MSA:
             for line in self.lines
         ]
 
-    def sequences(self) -> List[str]:
+    def sequences(self) -> list[str]:
         return [line.sequence for line in self.lines]
 
-    def gap_fraction(self) -> List[float]:
+    def gap_fraction(self) -> list[float]:
         return [line.gap_fraction for line in self.lines]
 
+    def truncate(self, n: int) -> 'MSA':
+        return replace(self, lines=[
+            MSALine(
+                sequence=line.sequence[:n],
+                description=str(line.description),
+                name=str(line.name),
+            ) 
+            for line in self.lines
+        ])
+
     @classmethod
-    def from_file(cls, file: Union[str, TextIOWrapper]) -> 'MSA':
+    def from_file(cls, file: str | TextIOWrapper) -> 'MSA':
         from bioino import FastaCollection
         collection = list(FastaCollection.from_file(file).sequences)
         # print(collection[0])
@@ -311,23 +341,43 @@ class MSA:
         return None
 
 
+@dataclass
 class PairedMSA(MSA):
-
     """Paired MSA object which can be used for co-evolutionary analyses.
     """
+    chain_a_length: int
+    chain_b_length: int = field(init=False)
 
-    def __init__(self, 
-                 chain_a_length: int, 
-                 *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.chain_a_length = chain_a_length
+    def __post_init__(self):
+        super().__post_init__()
         self.chain_b_length = self.seq_length - self.chain_a_length
+
+    def split(
+        self
+    ):
+        msa1 = MSA([
+            MSALine(
+                sequence=line.sequence[:self.chain_a_length],
+                description=str(line.description[0]),
+                name=str(line.name[0]),
+            ) 
+            for line in self.lines
+        ])
+        msa2 = MSA([
+            MSALine(
+                sequence=line.sequence[self.chain_a_length:],
+                description=str(line.description[1]),
+                name=str(line.name[1]),
+            )
+            for line in self.lines
+        ])
+        return msa1, msa2
 
     @staticmethod
     def _check_ref_match(
         msa1: MSA,
         msa2: MSA,
-        interaction_map: Optional[Mapping[str, Iterable[str]]] = None,
+        interaction_map: Mapping[str, Iterable[str]] | None = None,
         name_attr: str = "species_id"
     ) -> None:
         """Validate that the reference sequences (first lines) of two MSAs
@@ -381,13 +431,13 @@ class PairedMSA(MSA):
     @staticmethod
     def join_msa(
         msa1: MSA, 
-        msa2: Optional[MSA] = None, 
+        msa2: MSA | None = None, 
         blocked: bool = False,
-        interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+        interaction_map: str | Mapping[str, Iterable[str]] | None = None,
         strict_species_match: bool = False,
         enforce_ref_match: bool = False,
         name_attr: str = "species_id"
-    ) -> Tuple[List[PairedMSALine], int]:
+    ) -> tuple[list[PairedMSALine], int]:
         if strict_species_match or interaction_map is None:
             fallback_name_attr = name_attr
         else:
@@ -530,7 +580,10 @@ class PairedMSA(MSA):
                     )
                 ] for lines in (msa1.lines, msa2.lines)
             )
-            msa1, msa2 = (msa._filter_by_index(idx) for idx, msa in zip((idx1, idx2), (msa1, msa2)))
+            msa1, msa2 = (
+                msa._filter_by_index(idx) 
+                for idx, msa in zip((idx1, idx2), (msa1, msa2))
+            )
             msa_lines += PairedMSA.__make_blocked(msa1, msa2)
         
         return msa_lines, msa1.seq_length
@@ -540,7 +593,7 @@ class PairedMSA(MSA):
         msa1: MSA, 
         msa2: MSA, 
         gap_char: str = '-'
-    ) -> List[PairedMSALine]:
+    ) -> list[PairedMSALine]:
         gaps1, gaps2 = (gap_char * msa.seq_length for msa in (msa1, msa2))
         # The msas must be str representations of the blocked+paired MSAs here
         block1 = [
@@ -563,9 +616,9 @@ class PairedMSA(MSA):
     def from_msa(
         cls, 
         msa1: MSA, 
-        msa2: Optional[MSA] = None,
+        msa2: MSA | None = None,
         blocked: bool = False,
-        interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+        interaction_map: str | Mapping[str, Iterable[str]] | None = None,
         strict_species_match: bool = False,
         enforce_ref_match: bool = False,
         **kwargs
@@ -587,8 +640,8 @@ class PairedMSA(MSA):
     @classmethod
     def from_file(
         cls, 
-        file1: Union[str, TextIOWrapper],
-        file2: Optional[Union[str, TextIOWrapper]] = None,
+        file1: str | TextIOWrapper,
+        file2: str | TextIOWrapper | None = None,
         blocked: bool = False,
         **kwargs
     ) -> 'PairedMSA':
