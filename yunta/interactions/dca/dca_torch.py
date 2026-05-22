@@ -122,7 +122,7 @@ def _torch_cov(
 ) -> FloatTensor:
     import torch
     if w is None:
-        return torch.cov(x)
+        return torch.cov(x.T)
     else:
         num_points = torch.sum(w) - torch.sqrt(torch.mean(w))
         x_mean = torch.sum(
@@ -136,7 +136,7 @@ def _torch_cov(
 
 def two_site_frequency_count(
     x: Tensor,
-    min_identical_fraction: float = .8,
+    min_identical_fraction: float = .8
 ):
     import torch
     n_row, n_col, alphabet_size = x.shape  # (M, L, 21)
@@ -148,7 +148,7 @@ def two_site_frequency_count(
     pairs_above_id_cutoff = (dot_product > identity_cutoff)#.to(dtype)  # nrow, nrow
     bias_correction = 1. / torch.sum(pairs_above_id_cutoff, dim=-1)  # ma (nrow)
     effective_sequence_number = torch.sum(bias_correction)  # Meff 
-    return dot_product, bias_correction, effective_sequence_number
+    return bias_correction, effective_sequence_number
 
 
 def _cov_shrinkage(
@@ -199,7 +199,6 @@ def _calculate_dca(
         num_classes=_A3M_ALPHABET_SIZE,
     ).to(dtype)   # (M, L, 21)
     (
-        dot_product, 
         bias_correction, 
         effective_sequence_number,
     ) = two_site_frequency_count(
