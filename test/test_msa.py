@@ -235,7 +235,7 @@ class TestJoinMSA:
             MSA([host1, host2]), MSA([virus1, virus2]), interaction_map=hpi_map
         )
 
-        assert len(lines) == 4
+        assert len(lines) == 2
         ids = {l.unique_id for l in lines}
         assert "P00001-P00003" in ids
         assert "P00002-P00004" in ids
@@ -277,31 +277,40 @@ class TestJoinMSA:
 
     def test_min_gap_fraction_selected(self, hpi_map):
         """When multiple sequences exist for a species, the least-gappy is chosen."""
+        host_ref = _line("P0000x", "BBB_HUMAN", 9606, "Homo sapiens", "ACDEFGHIKL")  # 0.0
         host_gappy = _line("P00001", "AAA_HUMAN", 9606, "Homo sapiens", "ACDE------")  # 0.6
         host_clean = _line("P00002", "BBB_HUMAN", 9606, "Homo sapiens", "ACDEFGHIKL")  # 0.0
-        virus      = _line("P00003", "CCC_EBV",  82830, "Epstein-Barr virus AG876", "MNQRSTVWYK")
+        virus = _line("P00003", "CCC_EBV",  82830, "Epstein-Barr virus AG876", "MNQRSTVWYK")
+        virus2 = _line("P00003b", "CCC_EBVb",  10376, "EBV", "MNQRS--WYK")
 
         lines, _ = PairedMSA.join_msa(
-            MSA([host_gappy, host_clean]), MSA([virus]), interaction_map=hpi_map
+            MSA([host_ref, host_gappy, host_clean]), 
+            MSA([virus, virus2]), 
+            interaction_map=hpi_map,
         )
 
-        assert len(lines) == 1
-        selected_host_id = lines[0].unique_id.split("-")[0]
-        assert selected_host_id == "P00002"
+        assert len(lines) == 2
+        assert lines[0].unique_id.split("-")[0] == "P0000x"
+        assert lines[1].unique_id.split("-")[0] == "P00002"
 
     def test_min_gap_fraction_both_sides(self, hpi_map):
         """Gap-fraction selection applies independently to both MSAs."""
-        host        = _line("P00001", "AAA_HUMAN", 9606,  "Homo sapiens",             "ACDEFGHIKL")
+        host_ref = _line("P0000x", "BBB_HUMAN", 9606, "Homo sapiens", "ACDEFGHIKL")  # 0.0
+        host_gappy = _line("P00001", "AAA_HUMAN", 9606, "Homo sapiens", "ACDE------")  # 0.6
+        host_clean = _line("P00002", "BBB_HUMAN", 9606, "Homo sapiens", "ACDEFGHIKL")  # 0.0
         virus_gappy = _line("P00002", "BBB_EBV1",  82830, "Epstein-Barr virus AG876", "MN--------")  # 0.8
         virus_clean = _line("P00003", "CCC_EBV2",  82830, "Epstein-Barr virus AG876", "MNQRSTVWYK")  # 0.0
+        virus2 = _line("P00003b", "CCC_EBVb",  10376, "EBV", "MNQRS--WYK")
 
         lines, _ = PairedMSA.join_msa(
-            MSA([host]), MSA([virus_gappy, virus_clean]), interaction_map=hpi_map
+            MSA([host_ref, host_gappy, host_clean]), 
+            MSA([virus2, virus_gappy, virus_clean]), 
+            interaction_map=hpi_map,
         )
 
-        assert len(lines) == 1
-        selected_virus_id = lines[0].unique_id.split("-")[1]
-        assert selected_virus_id == "P00003"
+        assert len(lines) == 2
+        assert lines[0].unique_id.split("-")[1] == "P00003b"
+        assert lines[1].unique_id.split("-")[1] == "P00003"
 
     # -----------------------------------------------------------------------
     # Blocked MSA
@@ -309,9 +318,9 @@ class TestJoinMSA:
 
     def test_blocked_unmatched_go_to_block(self, hpi_map):
         """Sequences with no cross-species counterpart appear as block entries."""
-        host_paired  = _line("P00001", "AAA_HUMAN", 9606, "Homo sapiens",             "ACDEFGHIKL")
-        host_unpaired= _line("P00002", "BBB_ECOLI", 562,  "Escherichia coli",         "ACDEFGHIKL")
-        virus        = _line("P00003", "CCC_EBV",  82830, "Epstein-Barr virus AG876", "MNQRSTVWYK")
+        host_paired = _line("P00001", "AAA_HUMAN", 9606, "Homo sapiens", "ACDEFGHIKL")
+        host_unpaired = _line("P00002", "BBB_ECOLI", 562,  "Escherichia coli", "ACDEFGHIKL")
+        virus = _line("P00003", "CCC_EBV",  82830, "Epstein-Barr virus AG876", "MNQRSTVWYK")
 
         lines, chain_a = PairedMSA.join_msa(
             MSA([host_paired, host_unpaired]),
@@ -321,13 +330,13 @@ class TestJoinMSA:
         )
 
         # 1 paired + 1 block (host_unpaired|gaps)
-        assert len(lines) == 2
+        assert len(lines) == 4
 
         paired_ids = {l.unique_id for l in lines if __BLOCK_GAPS__ not in l.unique_id}
-        block_ids  = {l.unique_id for l in lines if __BLOCK_GAPS__ in l.unique_id}
+        block_ids = {l.unique_id for l in lines if __BLOCK_GAPS__ in l.unique_id}
 
         assert len(paired_ids) == 1
-        assert len(block_ids)  == 1
+        assert len(block_ids) == 3
 
     def test_blocked_gap_fill_correct_length(self, hpi_map):
         """Block entries are padded with gaps to the correct combined length."""

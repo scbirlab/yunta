@@ -119,6 +119,7 @@ def _calculate_interaction_blocks(
             for o in others:
                 _others[(i0,j0,n,m)].append(o)
     else:
+        print_err(f"[INFO] Calculating interactions for MSA with {n_msa_columns}.")
         if use_sequences:
             token_ids = ["".join(line) for line in token_ids]
         result, *others = interaction_fn(
