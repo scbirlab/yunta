@@ -139,7 +139,7 @@ class Runner(ABC):
     use_id = False
 
     @staticmethod
-    def make_model(cpu=True, **kwargs):
+    def make_model(cpu=False, **kwargs):
         return None
 
     @staticmethod
@@ -165,7 +165,7 @@ class Runner(ABC):
         msa2: Optional[MSA] = None,
         max_gap_fraction: float = .9,
         interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
-        cpu: bool = True,
+        cpu: bool = False,
         model: Optional[Callable] = None,
         chunksize: int = DEFAULT_CHUNKSIZE,
         enforce_ref_match: bool = False,
@@ -221,7 +221,7 @@ class AF2Runner(Runner):
 
     @staticmethod
     def make_model(
-        cpu=True, 
+        cpu=False, 
         max_recycles: int = 10,
         param_dir: Optional[str] = None,
         **kwargs
@@ -295,11 +295,14 @@ class RF2TRunner(Runner):
     metric_container = RF2TMetrics
 
     @staticmethod
-    def make_model(cpu=True, **kwargs):
+    def make_model(cpu=False, **kwargs):
         from rf2t_micro.predict_msa import Predictor
         import torch
-        if not cpu:
+        if not cpu and torch.cuda.is_available():
+            print_err("[INFO] Using GPU for RF2t")
             torch.cuda.empty_cache()
+        else:
+             print_err("[INFO] Using CPU for RF2t")
         model = Predictor(use_cpu=cpu)
         return model
 
