@@ -533,7 +533,7 @@ class PairedMSA(MSA):
 
         def _group_by_species(m, name_attr, fallback_name_attr):
             d = defaultdict(list)
-            for line in m.lines:
+            for line in m.lines[1:]:
                 allowed_species = [
                     getattr(line.description, _attr) 
                     for _attr in (name_attr, fallback_name_attr)
@@ -551,14 +551,7 @@ class PairedMSA(MSA):
         try:
             species_pairs.remove(query_pair)
         except KeyError:
-            sep = '\n\t- '
-            print_err(
-                f"""
-                [ERROR] Query species {query_pair} is not among the shared species in the MSAs:" 
-                    - {sep.join(map(str, sorted(species_pairs)))}
-                """
-            )
-            raise KeyError(f"Query species {':'.join(query_pair)} is not among the shared species in the MSAs")
+            pass
         species_pairs = [query_pair] + sorted(species_pairs, key=lambda p: tuple(s or "" for s in p))
         # Always add reference pair first — map check already done (or deliberately relaxed)
         _ref1, _ref2 = msa1_known.lines[0], msa2_known.lines[0]
@@ -571,7 +564,7 @@ class PairedMSA(MSA):
         ]
         matched_species = {query_pair}
 
-        for _sp1, _sp2 in species_pairs[1:]:
+        for _sp1, _sp2 in species_pairs:
             _lines1, _lines2 = species_msa1[_sp1], species_msa2[_sp2]
             # Name-level fallback keys for cross-strain matching
             # (e.g. NCBI:10710 → "Enterobacteria phage lambda" matches "Escherichia coli")
@@ -591,9 +584,11 @@ class PairedMSA(MSA):
                     (_sp1, _sp2, _sp2_name), 
                     (_sp2, _sp1, _sp1_name),
                 ]
-            ):
+            ) and _lines1 and _lines2:
                 line1 = min(_lines1, key=lambda l: l.gap_fraction)
                 line2 = min(_lines2, key=lambda l: l.gap_fraction)
+                # line1 = _lines1[0]
+                # line2 = _lines2[0]
                 msa_lines.append(
                     PairedMSALine(
                         name=_PAIRED_SPACER.join([str(line1.name), str(line2.name)]),
