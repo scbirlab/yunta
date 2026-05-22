@@ -1,6 +1,7 @@
 """Data structures for multiple sequence alignments."""
 
 from collections.abc import Iterable, Mapping
+from collections import defaultdict
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields, replace
 from io import TextIOWrapper
@@ -121,8 +122,11 @@ class MSADescription:
         taxon_id = self.info.get("OX", self.info.get("TaxID")) or -1
         if taxon_id == "":
             taxon_id = -1
-        if isinstance(taxon_id, str) and taxon_id.isdigit():
-            taxon_id = int(taxon_id)
+        if isinstance(taxon_id, str):
+            if taxon_id.isdigit():
+                taxon_id = int(taxon_id)
+            else:
+                taxon_id = -1
         if taxon_id > -1:  # NCBI identifier. Doesn't exist for everything
             species_id = f"NCBI:{taxon_id}"
         elif "OS" in self.info:  # UniProt species name fallback
@@ -504,29 +508,44 @@ class PairedMSA(MSA):
             query_name_attr = name_attr
         
         #Get the matches
-        query_pair = tuple(
-            getattr(msa.lines[0].description, name_attr)
-            if getattr(msa.lines[0].description, name_attr) in interaction_map
-            else getattr(msa.lines[0].description, fallback_name_attr)
-            for msa in (msa1_known, msa2_known)
+        def _get_query(m, name_attr, fallback_name_attr):
+            name = getattr(m.lines[0].description, name_attr)
+            if name in interaction_map:
+                return name
+            else:
+                return getattr(m.lines[0].description, fallback_name_attr)
+
+        query_pair = (
+            _get_query(msa1_known, name_attr, fallback_name_attr),
+            _get_query(msa2_known, name_attr, fallback_name_attr),
         )
 
+        def _get_species_set(m, name_attr, fallback_name_attr):
+            o = set()
+            for line in m.lines:
+                name = getattr(line.description, name_attr)
+                if name in interaction_map:
+                    o.add(name)
+                else:
+                    o.add(getattr(line.description, fallback_name_attr))
+            return [sp for sp in o if sp is not None]
+
+
+        def _group_by_species(m, name_attr, fallback_name_attr):
+            d = defaultdict(list)
+            for line in m.lines:
+                allowed_species = [
+                    getattr(line.description, _attr) 
+                    for _attr in (name_attr, fallback_name_attr)
+                ]
+                for _species in _get_species_set(m, name_attr, fallback_name_attr):
+                    if _species in allowed_species:
+                        d[_species].append(line)
+            return d
+
         species_msa1, species_msa2 = (
-            {
-                _species: [
-                    line for line in msa.lines 
-                    if _species in set(
-                        getattr(line.description, _attr) 
-                        for _attr in (name_attr, fallback_name_attr)
-                    )
-                ] for _species in set(
-                    getattr(line.description, name_attr)
-                    if getattr(line.description, name_attr) in interaction_map
-                    else getattr(line.description, fallback_name_attr)
-                    for line in msa.lines
-                )
-                if _species is not None
-            } for msa in (msa1_known, msa2_known)
+            _group_by_species(msa1_known, name_attr, fallback_name_attr),
+            _group_by_species(msa2_known, name_attr, fallback_name_attr),
         )
         species_pairs = set(product(species_msa1, species_msa2))
         try:
@@ -541,8 +560,18 @@ class PairedMSA(MSA):
             )
             raise KeyError(f"Query species {':'.join(query_pair)} is not among the shared species in the MSAs")
         species_pairs = [query_pair] + sorted(species_pairs, key=lambda p: tuple(s or "" for s in p))
-        msa_lines, matched_species = [], set()
-        for _sp1, _sp2 in species_pairs:
+        # Always add reference pair first — map check already done (or deliberately relaxed)
+        _ref1, _ref2 = msa1_known.lines[0], msa2_known.lines[0]
+        msa_lines = [
+            PairedMSALine(
+                name=_PAIRED_SPACER.join([str(_ref1.name), str(_ref2.name)]),
+                description=_PAIRED_SPACER.join([str(_ref1.description), str(_ref2.description)]),
+                sequence="".join([_ref1.sequence, _ref2.sequence]),
+            )
+        ]
+        matched_species = {query_pair}
+
+        for _sp1, _sp2 in species_pairs[1:]:
             _lines1, _lines2 = species_msa1[_sp1], species_msa2[_sp2]
             # Name-level fallback keys for cross-strain matching
             # (e.g. NCBI:10710 → "Enterobacteria phage lambda" matches "Escherichia coli")
