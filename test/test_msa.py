@@ -330,13 +330,13 @@ class TestJoinMSA:
         )
 
         # 1 paired + 1 block (host_unpaired|gaps)
-        assert len(lines) == 3
+        assert len(lines) == 4
 
         paired_ids = {l.unique_id for l in lines if __BLOCK_GAPS__ not in l.unique_id}
         block_ids = {l.unique_id for l in lines if __BLOCK_GAPS__ in l.unique_id}
 
         assert len(paired_ids) == 1
-        assert len(block_ids)  == 1
+        assert len(block_ids) == 3
 
     def test_blocked_gap_fill_correct_length(self, hpi_map):
         """Block entries are padded with gaps to the correct combined length."""
