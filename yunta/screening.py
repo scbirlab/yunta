@@ -88,7 +88,7 @@ def rf2track_one_vs_many(
     max_gap_fraction: float = DEFAULT_MAX_GAP_FRACTION,
     interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
     enforce_ref_match: bool = False,
-    cpu: bool = True,
+    cpu: bool = False,
     **kwargs
 ) -> List[Tuple[np.ndarray, np.ndarray, RF2TMetrics]]:
     return _screen_one_vs_many(

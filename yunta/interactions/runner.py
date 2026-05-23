@@ -1,5 +1,6 @@
 """Running interaction calculations."""
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Mapping, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Iterable, Mapping
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import partial
@@ -20,10 +21,10 @@ DEFAULT_CHUNKSIZE: int = 750
 
 def _pair_msas(
     msa1: MSA, 
-    msa2: Optional[MSA] = None,
+    msa2: MSA | None = None,
     max_gap_fraction: float = 1.,
     blocked: bool = False,
-    interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+    interaction_map: str | Mapping[str, Iterable[str]] | None = None,
     enforce_ref_match: bool = False
 ) -> PairedMSA:
     try:
@@ -51,7 +52,7 @@ def _calculate_interaction_blocks(
     use_sequences: bool = False,
     use_id: bool = False,
     **kwargs
-) -> Tuple[ndarray, dict]:
+) -> tuple[ndarray, dict]:
 
     import numpy as np
     from tqdm.auto import tqdm
@@ -68,7 +69,7 @@ def _calculate_interaction_blocks(
         print_err(f"[INFO] Splitting MSA with {n_msa_columns} columns into pairs of {chunksize}-column chunks.")
         chunks = np.split(token_ids, list(range(chunksize, n_msa_columns, chunksize)), axis=-1)
         n_chunks = len(chunks)
-        n_blocks = n_chunks * (n_chunks - 1) // 2
+        n_blocks = int(n_chunks * (n_chunks + 1) / 2)
         print_err(f"[INFO] Split MSA with {n_msa_columns} columns into {n_chunks} x {chunksize}-column chunks ({n_blocks} blocks).")
 
         result = np.zeros(
@@ -147,7 +148,7 @@ class Runner(ABC):
     @abstractmethod
     def _run_chunk(
         paired_msa: PairedMSA,
-        model: Optional[Callable] = None,
+        model: Callable | None = None,
         **kwargs
     ) -> Iterable[ArrayLike]:
         ...
@@ -155,7 +156,7 @@ class Runner(ABC):
     @staticmethod
     def post_run(
         paired_msa: PairedMSA,
-        results: Dict[Tuple, Any],
+        results: dict[tuple, Any],
         **kwargs
     ) -> dict:
         return {}
@@ -163,14 +164,14 @@ class Runner(ABC):
     def run(
         self,
         msa1: MSA,
-        msa2: Optional[MSA] = None,
+        msa2: MSA | None = None,
         max_gap_fraction: float = .9,
-        interaction_map: Optional[Union[str, Mapping[str, Iterable[str]]]] = None,
+        interaction_map: str | Mapping[str, Iterable[str]] | None = None,
         cpu: bool = False,
-        model: Optional[Callable] = None,
+        model: Callable | None = None,
         chunksize: int = DEFAULT_CHUNKSIZE,
         enforce_ref_match: bool = False,
-        model_kwargs: Optional[dict] = None,
+        model_kwargs: dict | None = None,
         **kwargs
     ):
         paired_msa = _pair_msas(
@@ -224,7 +225,7 @@ class AF2Runner(Runner):
     def make_model(
         cpu=False, 
         max_recycles: int = 10,
-        param_dir: Optional[str] = None,
+        param_dir: str | None = None,
         **kwargs
     ):
         from .af2.modelling import make_model_runner
@@ -239,8 +240,8 @@ class AF2Runner(Runner):
         paired_msa: ArrayLike,
         chain_a_length: int,
         _id: str,
-        model: Optional[Callable] = None,
-        seed: Optional[int] = None,
+        model: Callable | None = None,
+        seed: int | None = None,
         **kwargs
     ):
         from .af2 import run_af2
@@ -255,8 +256,8 @@ class AF2Runner(Runner):
     @staticmethod
     def post_run(
         paired_msa: PairedMSA,
-        results: Dict[Tuple, Any],
-        seed: Optional[int] = None,
+        results: dict[tuple, Any],
+        seed: int | None = None,
         **kwargs
     ):
         from .af2 import post_af2
@@ -271,7 +272,7 @@ class DCARunner(Runner):
     @staticmethod
     def _run_chunk(
         paired_msa: PairedMSA,
-        model: Optional[Callable] = None,
+        model: Callable | None = None,
         apc: bool = True,
         **kwargs
     ):
@@ -284,7 +285,7 @@ class DCARunner(Runner):
     @staticmethod
     def post_run(
         paired_msa: PairedMSA,
-        results: Dict[Tuple, Any],
+        results: dict[tuple, Any],
         apc: bool = True,
         **kwargs
     ):
@@ -311,7 +312,7 @@ class RF2TRunner(Runner):
     def _run_chunk(
         paired_msa: PairedMSA,
         chain_a_length: int,
-        model: Optional[Callable] = None,
+        model: Callable | None = None,
         **kwargs
     ):
         result, cα_coords = model.predict(
