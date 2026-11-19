@@ -2,13 +2,14 @@
 
 from collections.abc import Iterable, Mapping
 from collections import defaultdict
-from copy import deepcopy
+from copy import copy
 from dataclasses import asdict, dataclass, field, fields, replace
 from io import TextIOWrapper
-from itertools import dropwhile, product
+from itertools import dropwhile
 import sys
 
 from carabiner import cast, print_err
+import numpy as np
 from tqdm.auto import tqdm
 
 from ..interaction_utils import organism_interactions, _name_normalizer
@@ -17,6 +18,30 @@ _A3M_ALPHABET = tuple("ARNDCQEGHILKMFPSTWYV-")
 _A3M_ALPHABET_SIZE: int = len(_A3M_ALPHABET)
 _A3M_ALPHABET_DICT = dict(zip(_A3M_ALPHABET, range(_A3M_ALPHABET_SIZE)))
 _PAIRED_SPACER = ':::'
+# Byte -> token lookup. Anything outside the alphabet (X, B, Z, U, O, ...) maps to gap.
+_TOKEN_LUT = np.full(256, _A3M_ALPHABET_SIZE - 1, dtype=np.uint8)
+for _letter, _idx in _A3M_ALPHABET_DICT.items():
+    _TOKEN_LUT[ord(_letter)] = _idx
+
+
+def tokenize(sequences: Iterable[str]) -> np.ndarray:
+    """Convert equal-length sequences to a ``(n_seq, n_col)`` ``uint8`` token array.
+
+    Examples
+    ========
+    >>> tokenize(["AR-", "XYZ"]).tolist()
+    [[0, 1, 20], [20, 18, 20]]
+    >>> tokenize([]).shape
+    (0, 0)
+
+    """
+    sequences = list(sequences)
+    if len(sequences) == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+    n_col = len(sequences[0])
+    buffer = np.frombuffer("".join(sequences).encode("ascii", "replace"), dtype=np.uint8)
+    return _TOKEN_LUT[buffer].reshape(len(sequences), n_col)
+
 __BLOCK_GAPS__ = "__BLOCK_GAPS__"
 
 @dataclass
@@ -244,11 +269,7 @@ class MSA:
         if len(seq_length) == 0:
             raise AttributeError(f"No sequences! The lines are: {', '.join(map(str, self.lines))}")
         self.seq_length = seq_length.pop()
-        self.sequence_token_ids = [
-            [_A3M_ALPHABET_DICT.get(letter, len(_A3M_ALPHABET_DICT) - 1) 
-            for letter in line.sequence]
-            for line in self.lines
-        ]
+        self.sequence_token_ids = tokenize(line.sequence for line in self.lines)
 
     def sequences(self) -> list[str]:
         return [line.sequence for line in self.lines]
@@ -276,50 +297,59 @@ class MSA:
     def __len__(self):
         return len(self.lines)
 
-    def neff(self, identity_threshold: float = .62) -> int:
-        """Calculate the number of effective sequences.
+    def neff(self, identity_threshold: float = .62, verbose: bool = True) -> int:
+        """Number of effective sequences: greedy clusters at a sequence-identity threshold.
+
+        Two sequences are in the same cluster if they are identical at
+        ``>= identity_threshold`` of alignment columns (gaps count as characters,
+        as in the DCA reweighting scheme).
+
+        Examples
+        ========
+        >>> m = MSA([MSALine(name=f">sp|P{i}|X", description="", sequence=s)
+        ...          for i, s in enumerate(["AAAAAAAAAA", "AAAAAAAAAC", "CDEFGHIKLM"])])
+        >>> m.neff(verbose=False)
+        2
+        >>> m.neff(identity_threshold=.95, verbose=False)
+        3
+
         """
-        import numpy as np
-        remaining_msa = deepcopy(self.sequence_token_ids)
-        threshold = float(self.seq_length * identity_threshold)
+        arr = np.asarray(self.sequence_token_ids)
+        n_rows = arr.shape[0]
+        # Rows with identity >= threshold have <= L * (1 - threshold) mismatches.
+        max_mismatches = self.seq_length * (1. - identity_threshold)
+        remaining = np.arange(n_rows)
         n_effective = 0
-        print_err(
-            f"[INFO] Clustering at identity threshold: {identity_threshold} ",
-            f"({threshold}/{self.seq_length} positions): "
-        )
-        while len(remaining_msa) > 0:
-            print_err(
-                f"\r:: Neff = {n_effective} | remaining to cluster: {len(remaining_msa)}", 
-                end='',
-            )
-            arr = np.array(remaining_msa, dtype=np.int8)
-            diffs = np.sum(arr != arr[0], axis=1)
-            remaining_msa = arr[diffs > threshold].tolist()
+        while remaining.size > 0:
+            representative = arr[remaining[0]]
+            mismatches = np.count_nonzero(arr[remaining] != representative, axis=1)
+            remaining = remaining[mismatches > max_mismatches]
             n_effective += 1
-        print_err(f"\n[INFO] Neff = {n_effective}")
+        if verbose:
+            print_err(
+                f"[INFO] Neff = {n_effective} at identity threshold {identity_threshold} "
+                f"(<= {max_mismatches:.1f} mismatches over {self.seq_length} positions)."
+            )
         return n_effective
 
-    def _filter_by_index(self, indices=Iterable[int]) -> 'MSA':
+    def _filter_by_index(self, indices: Iterable[int], keep_query: bool = True) -> 'MSA':
+        """Return a shallow copy containing only the rows in ``indices`` (order preserved).
+
+        The first row is the query, which defines ``name`` and the pairing reference,
+        so it is always retained unless ``keep_query=False``.
+
+        """
         start_len = len(self)
-        indices = set(indices)
-        new_copy = deepcopy(self)
-        for _field in fields(self):
-            if _field.name not in ('name', 'seq_length'):
-                original_items = getattr(self, _field.name) 
-                if not isinstance(original_items, int):  # seq length
-                    setattr(
-                        new_copy, 
-                        _field.name, 
-                        [
-                            item for i, item in enumerate(original_items) 
-                            if i in indices
-                        ],
-                    )
-        final_len = len(new_copy)
-        print_err(f"[INFO] Filtered out {start_len - final_len}/{start_len} lines from MSA.")
+        keep = sorted(set(indices) | ({0} if (keep_query and start_len > 0) else set()))
+        new_copy = copy(self)
+        new_copy.lines = tuple(self.lines[i] for i in keep)
+        new_copy.sequence_labels = tuple(self.sequence_labels[i] for i in keep)
+        new_copy.sequence_token_ids = np.asarray(self.sequence_token_ids)[keep]
+        print_err(f"[INFO] Filtered out {start_len - len(new_copy)}/{start_len} lines from MSA.")
         return new_copy
 
     def filter_by_known_species(self) -> 'MSA':
+        """Drop rows without species info (the query row is always kept)."""
         print_err("[INFO] Filtering MSA by known species.")
         indices_to_keep = (
             i for i, line in enumerate(self.lines) 
@@ -347,6 +377,75 @@ class MSA:
         return None
 
 
+_SYMMETRIC_CACHE: list = []  # single slot: (map, symmetrised map); the built-in map is reused
+
+
+def _symmetrise(interaction_map: Mapping[str, Iterable[str]]) -> dict[str, set[str]]:
+    """Make an interaction map undirected: ``b in out[a]`` iff ``b in map[a]`` or ``a in map[b]``.
+
+    The last result is cached by object identity, because the built-in map is large and
+    shared across calls.
+
+    Examples
+    ========
+    >>> {k: sorted(v) for k, v in sorted(_symmetrise({"a": ["b"], "c": ["a"]}).items())}
+    {'a': ['b', 'c'], 'b': ['a'], 'c': ['a']}
+
+    """
+    if _SYMMETRIC_CACHE and _SYMMETRIC_CACHE[0][0] is interaction_map:
+        return _SYMMETRIC_CACHE[0][1]
+    out = defaultdict(set)
+    for key, values in interaction_map.items():
+        for value in values:
+            out[key].add(value)
+            out[value].add(key)
+    out = dict(out)
+    _SYMMETRIC_CACHE[:] = [(interaction_map, out)]
+    return out
+
+
+def _allowed_species_pairs(
+    species_msa1: Mapping[str, list],
+    species_msa2: Mapping[str, list],
+    interaction_map: Mapping[str, Iterable[str]],
+) -> set[tuple[str, str]]:
+    """Find species pairs (one from each MSA) that the interaction map allows to pair.
+
+    A pair ``(s1, s2)`` is allowed if either species (or the generic species name of the
+    group's first row) is listed as a partner of the other, in either direction.
+    Cost is proportional to the number of map edges touched, not ``len(s1) * len(s2)``.
+
+    Examples
+    ========
+    >>> class _D:  # minimal stand-in for MSADescription
+    ...     def __init__(self, g): self.generic_species_name = g
+    >>> class _L:
+    ...     def __init__(self, g): self.description = _D(g)
+    >>> g1 = {"NCBI:9606": [_L("Homo sapiens")]}
+    >>> g2 = {"NCBI:82830": [_L("Epstein-Barr virus")], "NCBI:5": [_L("Other")]}
+    >>> sorted(_allowed_species_pairs(g1, g2, {"NCBI:82830": ["NCBI:9606"]}))
+    [('NCBI:9606', 'NCBI:82830')]
+
+    """
+    symmetric = _symmetrise(interaction_map)
+    by_key2 = defaultdict(set)
+    for sp2, lines2 in species_msa2.items():
+        by_key2[sp2].add(sp2)
+        name2 = lines2[0].description.generic_species_name if lines2 else None
+        if name2 is not None:
+            by_key2[name2].add(sp2)
+    pairs = set()
+    for sp1, lines1 in species_msa1.items():
+        name1 = lines1[0].description.generic_species_name if lines1 else None
+        partners = set(symmetric.get(sp1, ()))
+        if name1 is not None:
+            partners |= symmetric.get(name1, set())
+        for partner in partners:
+            for sp2 in by_key2.get(partner, ()):
+                pairs.add((sp1, sp2))
+    return pairs
+
+
 @dataclass
 class PairedMSA(MSA):
     """Paired MSA object which can be used for co-evolutionary analyses.
@@ -357,6 +456,19 @@ class PairedMSA(MSA):
     def __post_init__(self):
         super().__post_init__()
         self.chain_b_length = self.seq_length - self.chain_a_length
+
+    @property
+    def ids(self) -> tuple[str, str]:
+        """Unique IDs of the two query sequences (unlike splitting ``name`` on ``-``,
+        this is safe for IDs that contain hyphens, e.g. UniProt isoforms ``P12345-2``).
+
+        >>> line = PairedMSALine(name=">sp|P1-2|A:::>sp|Q9|B", description=":::", sequence="AC")
+        >>> PairedMSA(lines=[line], chain_a_length=1).ids
+        ('P1-2', 'Q9')
+
+        """
+        first = self.lines[0].name
+        return first[0].unique_id, first[1].unique_id
 
     def split(
         self
@@ -449,7 +561,7 @@ class PairedMSA(MSA):
         else:
             fallback_name_attr = "generic_species_name"
         if msa2 is None:
-            msa2 = deepcopy(msa1)
+            msa2 = msa1
         msa1_known, msa2_known = (msa.filter_by_known_species() for msa in (msa1, msa2))
 
         if interaction_map is None:
@@ -520,39 +632,29 @@ class PairedMSA(MSA):
             _get_query(msa2_known, name_attr, fallback_name_attr),
         )
 
-        def _get_species_set(m, name_attr, fallback_name_attr):
-            o = set()
-            for line in m.lines:
-                name = getattr(line.description, name_attr)
-                if name in interaction_map:
-                    o.add(name)
-                else:
-                    o.add(getattr(line.description, fallback_name_attr))
-            return [sp for sp in o if sp is not None]
+        def _species_key(line) -> str | None:
+            """Group key for a row: its species ID if the map knows it, else the generic name."""
+            name = getattr(line.description, name_attr)
+            if name in interaction_map:
+                return name
+            return getattr(line.description, fallback_name_attr)
 
-
-        def _group_by_species(m, name_attr, fallback_name_attr):
+        def _group_by_species(m) -> dict:
             d = defaultdict(list)
-            for line in m.lines[1:]:
-                allowed_species = [
-                    getattr(line.description, _attr) 
-                    for _attr in (name_attr, fallback_name_attr)
-                ]
-                for _species in _get_species_set(m, name_attr, fallback_name_attr):
-                    if _species in allowed_species:
-                        d[_species].append(line)
+            for line in m.lines[1:]:  # row 0 is the query, handled separately
+                key = _species_key(line)
+                if key is not None:
+                    d[key].append(line)
             return d
 
-        species_msa1, species_msa2 = (
-            _group_by_species(msa1_known, name_attr, fallback_name_attr),
-            _group_by_species(msa2_known, name_attr, fallback_name_attr),
+        species_msa1, species_msa2 = _group_by_species(msa1_known), _group_by_species(msa2_known)
+        species_pairs = _allowed_species_pairs(species_msa1, species_msa2, interaction_map)
+        query_pair_allowed = query_pair in species_pairs
+        species_pairs.discard(query_pair)
+        species_pairs = (
+            ([query_pair] if query_pair_allowed else []) 
+            + sorted(species_pairs, key=lambda p: tuple(s or "" for s in p))
         )
-        species_pairs = set(product(species_msa1, species_msa2))
-        try:
-            species_pairs.remove(query_pair)
-        except KeyError:
-            pass
-        species_pairs = [query_pair] + sorted(species_pairs, key=lambda p: tuple(s or "" for s in p))
         # Always add reference pair first — map check already done (or deliberately relaxed)
         _ref1, _ref2 = msa1_known.lines[0], msa2_known.lines[0]
         msa_lines = [
@@ -565,30 +667,10 @@ class PairedMSA(MSA):
         matched_species = {query_pair}
 
         for _sp1, _sp2 in species_pairs:
-            _lines1, _lines2 = species_msa1[_sp1], species_msa2[_sp2]
-            # Name-level fallback keys for cross-strain matching
-            # (e.g. NCBI:10710 → "Enterobacteria phage lambda" matches "Escherichia coli")
-            if _lines1:
-                _sp1_name = _lines1[0].description.generic_species_name
-            else:
-                _sp1_name = _sp1
-            if _lines2:
-                _sp2_name = _lines2[0].description.generic_species_name
-            else:
-                _sp2_name = _sp2
-            if any(
-                (
-                    sA in interaction_map.get(sB, []) 
-                    or sA in interaction_map.get(sB_name, [])
-                ) for (sA, sB, sB_name) in [
-                    (_sp1, _sp2, _sp2_name), 
-                    (_sp2, _sp1, _sp1_name),
-                ]
-            ) and _lines1 and _lines2:
+            _lines1, _lines2 = species_msa1.get(_sp1), species_msa2.get(_sp2)
+            if _lines1 and _lines2:  # the query pair is first, and is not required to have homologs
                 line1 = min(_lines1, key=lambda l: l.gap_fraction)
                 line2 = min(_lines2, key=lambda l: l.gap_fraction)
-                # line1 = _lines1[0]
-                # line2 = _lines2[0]
                 msa_lines.append(
                     PairedMSALine(
                         name=_PAIRED_SPACER.join([str(line1.name), str(line2.name)]),
@@ -608,8 +690,8 @@ class PairedMSA(MSA):
                     )
                 ] for lines in (msa1.lines, msa2.lines)
             )
-            msa1, msa2 = (
-                msa._filter_by_index(idx) 
+            msa1, msa2 = (  # the query rows are already in the paired block
+                msa._filter_by_index(idx, keep_query=False)
                 for idx, msa in zip((idx1, idx2), (msa1, msa2))
             )
             msa_lines += PairedMSA.__make_blocked(msa1, msa2)
@@ -678,7 +760,7 @@ class PairedMSA(MSA):
         """
         msa1 = MSA.from_file(file1)
         if file2 is None:
-            msa2 = deepcopy(msa1)
+            msa2 = msa1
         else:
             msa2 = MSA.from_file(file2)
         return cls.from_msa(msa1, msa2, blocked=blocked, **kwargs)

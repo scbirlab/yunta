@@ -1735,7 +1735,9 @@ class EmbeddingsAndEvoformer(hk.Module):
                                           True,
                                           name='prev_msa_first_row_norm')(
                                               batch['prev_msa_first_row'])
-        msa_activations.at[0].set(prev_msa_first_row)
+        # JAX arrays are immutable: the result of ``.at[...]`` must be assigned. (It was
+        # previously discarded, so the recycled first row never fed back; upstream AF2 adds it.)
+        msa_activations = msa_activations.at[0].add(prev_msa_first_row)
 
       if 'prev_pair' in batch:
         pair_activations += hk.LayerNorm([-1],

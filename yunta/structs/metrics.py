@@ -36,7 +36,11 @@ class InteractionMetrics:
     # weights_B: Iterable[float] = field(metadata={"named": True})
 
     def __post_init__(self):
-        self.uniprot_id_1, self.uniprot_id_2 = self.ID.split('-')
+        # Best guess from the ID; callers that know the true IDs (which may contain
+        # hyphens, e.g. isoforms) overwrite these.
+        parts = self.ID.split('-')
+        mid = len(parts) // 2
+        self.uniprot_id_1, self.uniprot_id_2 = '-'.join(parts[:mid]), '-'.join(parts[mid:])
 
     def _get_named_params(self):
         return {f.name for f in fields(self) if f.metadata.get("named")}
@@ -47,6 +51,7 @@ class InteractionMetrics:
         mode: str = "w",
         skip_header: bool = False
     ) -> None:
+        opened_here = not isinstance(filename, TextIOWrapper)
         f = cast(filename, to=TextIOWrapper, mode=mode)
         if hasattr(f, 'name') and not f.name.startswith('<'):
             if dirname := os.path.dirname(f.name):
@@ -69,6 +74,8 @@ class InteractionMetrics:
             for k, v in asdict(self).items()
         }
         w.writerow(row)
+        if opened_here:  # was never closed, so output relied on garbage collection to flush
+            f.close()
         return None
 
 

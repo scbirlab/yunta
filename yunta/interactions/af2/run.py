@@ -51,7 +51,7 @@ def model_protein_interaction(
     """
 
     if seed is None:
-        seed = random.randrange(sys.maxsize)
+        seed = random.randrange(2**31 - 1)
     if model is None:
         from .modelling import make_model_runner
         model = make_model_runner(**(model_kwargs or {}))

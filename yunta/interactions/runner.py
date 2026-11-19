@@ -2,6 +2,7 @@
 from typing import TYPE_CHECKING, Any
 from collections.abc import Callable, Iterable, Mapping
 from abc import ABC, abstractmethod
+import random
 from collections import defaultdict
 from functools import partial
 from itertools import combinations
@@ -35,7 +36,7 @@ def _pair_msas(
             interaction_map=interaction_map,
             enforce_ref_match=enforce_ref_match,
         )
-    except AttributeError as e:  # no pairs!
+    except (AttributeError, ValueError) as e:  # no pairs, or unknown/mismatched query species
         print_err(f"[WARN] Skipping pair,", e)
         return None
     else:
@@ -139,6 +140,7 @@ class Runner(ABC):
     metric_container = InteractionMetrics
     use_sequences = False
     use_id = False
+    stochastic = False  # if True, a seed is drawn up front so it can be recorded
 
     @staticmethod
     def make_model(cpu=False, **kwargs):
@@ -174,6 +176,8 @@ class Runner(ABC):
         model_kwargs: dict | None = None,
         **kwargs
     ):
+        if self.stochastic and kwargs.get("seed") is None:
+            kwargs["seed"] = random.randrange(2**31 - 1)  # recorded in the metrics
         paired_msa = _pair_msas(
             msa1, 
             msa2, 
@@ -191,7 +195,7 @@ class Runner(ABC):
 
         results, others = _calculate_interaction_blocks(
             paired_msa,
-            interaction_fn=partial(self._run_chunk, model=model),
+            interaction_fn=partial(self._run_chunk, model=model, cpu=cpu),
             chunksize=chunksize,
             use_sequences=self.use_sequences,
             use_id=self.use_id,
@@ -212,6 +216,7 @@ class Runner(ABC):
             **scores,
             **info,
         )
+        metrics.uniprot_id_1, metrics.uniprot_id_2 = paired_msa.ids  # IDs may contain hyphens
         return results, result_interaction, metrics
     
 
@@ -220,6 +225,7 @@ class AF2Runner(Runner):
     metric_container = AF2Metrics
     use_sequences = True
     use_id = True
+    stochastic = True
 
     @staticmethod
     def make_model(
@@ -274,12 +280,14 @@ class DCARunner(Runner):
         paired_msa: PairedMSA,
         model: Callable | None = None,
         apc: bool = True,
+        cpu: bool = False,
         **kwargs
     ):
         from .dca.dca_torch import calculate_dca
         return calculate_dca(
             msa=paired_msa, 
             apc=apc,
+            gpu=not cpu,
         ), {}
 
     @staticmethod
