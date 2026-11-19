@@ -32,14 +32,36 @@ def test_neff_clusters_at_identity_threshold():
     assert msa.neff(1.0, verbose=False) == 4
 
 
-def test_neff_is_fast_on_deep_msa():
+def _best_of(fn, repeats=3):
+    times = []
+    for _ in range(repeats):
+        t0 = perf_counter()
+        fn()
+        times.append(perf_counter() - t0)
+    return min(times)
+
+
+def _naive_neff(seqs, threshold=.62):
+    """Reference: the original per-pair Python loop (greedy clustering by identity)."""
+    L = len(seqs[0])
+    max_mismatch = L * (1 - threshold)
+    reps = []
+    for s in seqs:
+        if not any(sum(a != b for a, b in zip(s, r)) <= max_mismatch for r in reps):
+            reps.append(s)
+    return len(reps)
+
+
+def test_neff_is_vectorised_and_agrees_with_naive_reference():
+    """Hardware-independent: compare with a naive loop on the same input instead of a wall-clock limit."""
     rng = np.random.default_rng(0)
     letters = np.array(list("ACDEFGHIKLMNPQRSTVWY"))
-    seqs = ["".join(rng.choice(letters, 200)) for _ in range(3000)]
+    seqs = ["".join(rng.choice(letters, 120)) for _ in range(400)]
     msa = MSA([_line(f"P{i}", 9606, "Homo sapiens", s) for i, s in enumerate(seqs)])
-    t0 = perf_counter()
-    assert msa.neff(verbose=False) == 3000  # random sequences never cluster
-    assert perf_counter() - t0 < 15
+    assert msa.neff(verbose=False) == _naive_neff(seqs) == 400
+    fast = _best_of(lambda: msa.neff(verbose=False))
+    slow = _best_of(lambda: _naive_neff(seqs), repeats=1)
+    assert fast * 5 < slow, f"vectorised Neff ({fast:.3f}s) is not clearly faster than the naive loop ({slow:.3f}s)"
 
 
 # --------------------------------------------------------------------------- tokenisation
@@ -81,18 +103,28 @@ def test_filter_does_not_mutate_original():
 
 
 # --------------------------------------------------------------------------- pairing perf
-def test_pairing_scales_to_many_species():
-    """Regression: grouping recomputed the whole species set for every row (quadratic)."""
-    rng = np.random.default_rng(1)
-    n_rows, n_species = 6000, 1500
+def _make_species_msas(n_rows, n_species, seed=1):
+    rng = np.random.default_rng(seed)
     species = rng.integers(0, n_species, n_rows)
     seqs = ["".join(rng.choice(list("ACDEFGHIKLMNPQRSTVWY"), 20)) for _ in range(n_rows)]
     def make(prefix):
         return MSA([_line(f"{prefix}{i}", int(sp) + 1, f"Genus species{sp}", s) for i, (sp, s) in enumerate(zip(species, seqs))])
-    t0 = perf_counter()
-    lines, _ = PairedMSA.join_msa(make("A"), make("B"))
-    assert len(lines) > n_species * 0.9
-    assert perf_counter() - t0 < 30
+    return make("A"), make("B")
+
+
+def test_pairing_scales_linearly_not_quadratically_in_rows():
+    """Regression: grouping recomputed the whole species set for every row (quadratic).
+
+    Compares 4x the rows against 1x (same species density): linear work is ~4x, quadratic ~16x.
+    Relative, so it does not depend on CI hardware.
+    """
+    small_a, small_b = _make_species_msas(1500, 400)
+    big_a, big_b = _make_species_msas(6000, 1600)
+    t_small = _best_of(lambda: PairedMSA.join_msa(small_a, small_b))
+    t_big = _best_of(lambda: PairedMSA.join_msa(big_a, big_b))
+    lines, _ = PairedMSA.join_msa(big_a, big_b)
+    assert len(lines) > 1600 * 0.9
+    assert t_big < 9 * t_small, f"4x rows took {t_big / t_small:.1f}x as long (expected ~4x, quadratic would be ~16x)"
 
 
 def test_pairing_allows_species_name_fallback_only_when_map_says_so():

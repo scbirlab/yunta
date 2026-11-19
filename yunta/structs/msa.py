@@ -6,6 +6,7 @@ from copy import copy
 from dataclasses import asdict, dataclass, field, fields, replace
 from io import TextIOWrapper
 from itertools import dropwhile
+import os
 import sys
 
 from carabiner import cast, print_err
@@ -13,6 +14,11 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from ..interaction_utils import organism_interactions, _name_normalizer
+from .pairing import (
+    InvalidControlError, PairingReport, UnpairableError, allowed_row_pair_capacity, make_rng,
+    multiplicity, permute_partners, rewire_bipartite, sample_random_pairs, sample_random_rows,
+    validate_pairing,
+)
 
 _A3M_ALPHABET = tuple("ARNDCQEGHILKMFPSTWYV-")
 _A3M_ALPHABET_SIZE: int = len(_A3M_ALPHABET)
@@ -377,30 +383,39 @@ class MSA:
         return None
 
 
-_SYMMETRIC_CACHE: list = []  # single slot: (map, symmetrised map); the built-in map is reused
+_SYMMETRIC_CACHE: list = []  # single slot: (content fingerprint, symmetrised map)
+
+
+def _fingerprint(interaction_map: Mapping[str, Iterable[str]]) -> int:
+    """Hash of the map's *contents* (not its identity), so in-place edits invalidate the cache."""
+    return hash(tuple((k, tuple(v)) for k, v in interaction_map.items()))
 
 
 def _symmetrise(interaction_map: Mapping[str, Iterable[str]]) -> dict[str, set[str]]:
     """Make an interaction map undirected: ``b in out[a]`` iff ``b in map[a]`` or ``a in map[b]``.
 
-    The last result is cached by object identity, because the built-in map is large and
-    shared across calls.
+    The last result is cached by a hash of the map's contents (the built-in map is large and
+    shared across calls); mutating a map in place therefore never returns stale relationships.
 
     Examples
     ========
     >>> {k: sorted(v) for k, v in sorted(_symmetrise({"a": ["b"], "c": ["a"]}).items())}
     {'a': ['b', 'c'], 'b': ['a'], 'c': ['a']}
+    >>> m = {"a": ["b"]}; _ = _symmetrise(m); m["a"] = ["z"]
+    >>> sorted(_symmetrise(m)["z"])
+    ['a']
 
     """
-    if _SYMMETRIC_CACHE and _SYMMETRIC_CACHE[0][0] is interaction_map:
+    key = _fingerprint(interaction_map)
+    if _SYMMETRIC_CACHE and _SYMMETRIC_CACHE[0][0] == key:
         return _SYMMETRIC_CACHE[0][1]
     out = defaultdict(set)
-    for key, values in interaction_map.items():
+    for k, values in interaction_map.items():
         for value in values:
-            out[key].add(value)
-            out[value].add(key)
+            out[k].add(value)
+            out[value].add(k)
     out = dict(out)
-    _SYMMETRIC_CACHE[:] = [(interaction_map, out)]
+    _SYMMETRIC_CACHE[:] = [(key, out)]
     return out
 
 
@@ -452,6 +467,7 @@ class PairedMSA(MSA):
     """
     chain_a_length: int
     chain_b_length: int = field(init=False)
+    pairing_info: "PairingReport | None" = field(default=None, compare=False, repr=False)
 
     def __post_init__(self):
         super().__post_init__()
@@ -505,9 +521,8 @@ class PairedMSA(MSA):
         
         Raises
         ======
-        ``AttributeError``
-            If neither organism is in the other's allowed set
-        ``ValueError`` if a species ID is unknown (``-1``).
+        ``UnpairableError`` (an ``AttributeError`` and a ``ValueError``)
+            If neither organism is in the other's allowed set, or a species ID is unknown (``-1``).
 
         ``interaction_map`` is checked in both directions: the pair is valid
         if ``id2`` is in ``map[id1]`` OR ``id1`` is in ``map[id2]``.
@@ -517,13 +532,13 @@ class PairedMSA(MSA):
             getattr(msa.lines[0].description, name_attr) for msa in (msa1, msa2)
         )
         if id1 == -1 or id2 == -1:
-            raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
+            raise UnpairableError(f"At least one MSA reference species is unknown: {id1}, {id2}")
         if interaction_map is not None:
             allowed_id2 = interaction_map.get(id1, [])
             allowed_id1 = interaction_map.get(id2, [])
         
             if not id2 in allowed_id2 and not id1 in allowed_id1:
-                raise AttributeError(
+                raise UnpairableError(
                     f"""
                     MSA reference species do not match: 
                     
@@ -533,10 +548,10 @@ class PairedMSA(MSA):
                     """
                 )
             if id1 == -1 or all(_id2 == -1 for _id2 in allowed_id2):
-                raise ValueError(f"At least one MSA reference species is unknown: {id1}, {id2}")
+                raise UnpairableError(f"At least one MSA reference species is unknown: {id1}, {id2}")
         else:
             if id1 != id2:
-                raise AttributeError(
+                raise UnpairableError(
                     f"""
                     MSA reference species do not match, and no interaction map provided: 
                     
@@ -547,15 +562,32 @@ class PairedMSA(MSA):
         return None
 
     @staticmethod
-    def join_msa(
+    def join_msa(*args, **kwargs) -> tuple[list[PairedMSALine], int]:
+        """Pair two MSAs; returns ``(lines, chain_a_length)``. See :meth:`_join_msa` for the arguments."""
+        lines, seq_length, _ = PairedMSA._join_msa(*args, **kwargs)
+        return lines, seq_length
+
+    @staticmethod
+    def _join_msa(
         msa1: MSA, 
         msa2: MSA | None = None, 
         blocked: bool = False,
         interaction_map: str | Mapping[str, Iterable[str]] | None = None,
         strict_species_match: bool = False,
         enforce_ref_match: bool = False,
-        name_attr: str = "species_id"
-    ) -> tuple[list[PairedMSALine], int]:
+        name_attr: str = "species_id",
+        pairing: str = "map",
+        seed: int | None = None,
+        strict_controls: bool = True,
+        max_gap_fraction: float = 1.,
+    ) -> tuple[list[PairedMSALine], int, PairingReport]:
+        """...
+
+        ``max_gap_fraction`` is used **only** by ``permute-partners``: the real pairs are gap-filtered
+        first and the survivors are then permuted, so the control has exactly the real final A and B
+        rows (the permuted rows must not be filtered or subsampled again).
+        """
+        validate_pairing(pairing)
         if strict_species_match or interaction_map is None:
             fallback_name_attr = name_attr
         else:
@@ -656,6 +688,21 @@ class PairedMSA(MSA):
             + sorted(species_pairs, key=lambda p: tuple(s or "" for s in p))
         )
         # Always add reference pair first — map check already done (or deliberately relaxed)
+        real_pairs = {p for p in species_pairs if p != query_pair}
+        row_pairs = None  # explicit (row in A, row in B) pairs for the taxonomy-blind control
+        report = PairingReport("map", None, target_pairs=len(real_pairs), n_pairs=len(real_pairs), retained_known=None)
+        if pairing != "map":
+            species_pairs, row_pairs, report = PairedMSA._control_pairs(
+                pairing, species_pairs, query_pair, query_pair_allowed,
+                species_msa1, species_msa2,
+                [_species_key(l) for l in msa1_known.lines], [_species_key(l) for l in msa2_known.lines],
+                seed,
+            )
+            if not report.valid:
+                message = f"negative control '{pairing}' violates its invariants: {'; '.join(report.notes)}"
+                if strict_controls:
+                    raise InvalidControlError(message)
+                print_err(f"[WARN] {message}. Flagged pairing_valid=False.")
         _ref1, _ref2 = msa1_known.lines[0], msa2_known.lines[0]
         msa_lines = [
             PairedMSALine(
@@ -666,20 +713,57 @@ class PairedMSA(MSA):
         ]
         matched_species = {query_pair}
 
-        for _sp1, _sp2 in species_pairs:
+        selected = []  # (species A, species B, row A, row B) in the real pairing's row order
+        for _sp1, _sp2 in ([] if row_pairs is not None else species_pairs):
             _lines1, _lines2 = species_msa1.get(_sp1), species_msa2.get(_sp2)
             if _lines1 and _lines2:  # the query pair is first, and is not required to have homologs
                 line1 = min(_lines1, key=lambda l: l.gap_fraction)
                 line2 = min(_lines2, key=lambda l: l.gap_fraction)
-                msa_lines.append(
-                    PairedMSALine(
-                        name=_PAIRED_SPACER.join([str(line1.name), str(line2.name)]),
-                        description=_PAIRED_SPACER.join([str(line1.description), str(line2.description)]),
-                        sequence="".join([line1.sequence, line2.sequence]),
-                    )
-                )
+                selected.append((_sp1, _sp2, line1, line2))
                 matched_species |= set([_sp1, _sp2])
-            
+        if pairing == "permute-partners":
+            # Keep the real rows, permute the B partners among the non-query pairs.
+            if max_gap_fraction < 1.:  # filter the REAL rows, then permute exactly the survivors
+                selected = [
+                    t for t in selected
+                    if (t[2].sequence.count("-") + t[3].sequence.count("-")) / (len(t[2].sequence) + len(t[3].sequence))
+                    <= max_gap_fraction
+                ]
+            body = [t for t in selected if (t[0], t[1]) != query_pair or not query_pair_allowed]
+            head_rows = selected[: len(selected) - len(body)]
+            perm_rng, _ = make_rng(report.seed, str(query_pair[0]), str(query_pair[1]))
+            perm, retained = permute_partners(
+                [t[0] for t in body], [t[1] for t in body], set(species_pairs) | {query_pair}, perm_rng,
+            )
+            body = [(t[0], body[perm[i]][1], t[2], body[perm[i]][3]) for i, t in enumerate(body)]
+            selected = head_rows + body
+            report.n_pairs, report.target_pairs = len(body), len(body)
+            report.retained_known, report.multiplicity_ok = retained, True
+            report.finalise()
+            if not report.valid:
+                message = f"negative control '{pairing}' violates its invariants: {'; '.join(report.notes)}"
+                if strict_controls:
+                    raise InvalidControlError(message)
+                print_err(f"[WARN] {message}. Flagged pairing_valid=False.")
+        for _sp1, _sp2, line1, line2 in selected:
+            msa_lines.append(
+                PairedMSALine(
+                    name=_PAIRED_SPACER.join([str(line1.name), str(line2.name)]),
+                    description=_PAIRED_SPACER.join([str(line1.description), str(line2.description)]),
+                    sequence="".join([line1.sequence, line2.sequence]),
+                )
+            )
+
+        for i, j in (row_pairs or []):
+            line1, line2 = msa1_known.lines[i], msa2_known.lines[j]
+            msa_lines.append(
+                PairedMSALine(
+                    name=_PAIRED_SPACER.join([str(line1.name), str(line2.name)]),
+                    description=_PAIRED_SPACER.join([str(line1.description), str(line2.description)]),
+                    sequence="".join([line1.sequence, line2.sequence]),
+                )
+            )
+
         if blocked:  # make blocked MSA for the individual proteins not belonging to a species pair
             idx1, idx2 = (
                 [
@@ -696,7 +780,80 @@ class PairedMSA(MSA):
             )
             msa_lines += PairedMSA.__make_blocked(msa1, msa2)
         
-        return msa_lines, msa1.seq_length
+        return msa_lines, msa1.seq_length, report
+
+    @staticmethod
+    def _control_pairs(
+        pairing, species_pairs, query_pair, query_pair_allowed,
+        species_msa1, species_msa2, row_keys1, row_keys2, seed,
+    ):
+        """Replace the map's species pairs by a negative-control pairing (see ``yunta.structs.pairing``).
+
+        Returns ``(species_pairs, row_pairs, report)``; ``row_pairs`` is None except for
+        ``"random-rows"``. The query pair stays first (row 0 is the real query pair). Invariants
+        (depth, no known pairs, and for ``"rewired"`` multiplicity) are measured, not assumed.
+        """
+        rng, used_seed = make_rng(seed, str(query_pair[0]), str(query_pair[1]))
+        real = {p for p in species_pairs if p != query_pair}
+        known = real | ({query_pair} if query_pair_allowed else set())
+        head = [query_pair] if query_pair_allowed else []
+        order = lambda ps: sorted(ps, key=lambda p: tuple(s or "" for s in p))
+        report = PairingReport(pairing, used_seed, target_pairs=len(real))
+        infeasible = None
+        if pairing == "rewired":
+            new, _ = rewire_bipartite(real, rng, extra_forbidden={query_pair})
+            report.multiplicity_ok = multiplicity(new) == multiplicity(real)
+            species_out, row_out, new_pairs = head + order(new), None, new
+        elif pairing == "random-species":
+            new = sample_random_pairs(
+                list(species_msa1), list(species_msa2), len(real), rng, forbidden=known | {query_pair},
+            )
+            species_out, row_out, new_pairs = head + order(new), None, new
+        elif pairing == "permute-partners":
+            # Species pairs and row selection are the real ones; the permutation of B rows
+            # among them is applied by the caller once the rows are chosen.
+            species_out, row_out, new_pairs = head + order(real), None, set()
+            report.n_pairs = len(real)
+        else:  # random-rows
+            kk = known | {query_pair}
+            allowed = lambda i, j: (row_keys1[i + 1], row_keys2[j + 1]) in kk
+            k1, k2 = list(row_keys1[1:]), list(row_keys2[1:])
+
+            def allowed_matrix():
+                u1 = {k: n for n, k in enumerate(dict.fromkeys(k1))}
+                u2 = {k: n for n, k in enumerate(dict.fromkeys(k2))}
+                forb = np.zeros((len(u1), len(u2)), dtype=bool)
+                for a, b in kk:
+                    if a in u1 and b in u2:
+                        forb[u1[a], u2[b]] = True
+                return ~forb[np.array([u1[k] for k in k1], dtype=int)][:, np.array([u2[k] for k in k2], dtype=int)]
+
+            # Species-level controls keep the real query-species row (``head``); a row-level
+            # control has no head, so it draws that row too to reach the same depth.
+            target_rows = len(real) + len(head)
+            rows = sample_random_rows(
+                len(k1), len(k2), target_rows, rng, forbidden=allowed, allowed_matrix=allowed_matrix,
+            )
+            species_out, row_out = [], [(i + 1, j + 1) for i, j in rows]  # +1: row 0 is the query
+            new_pairs = {(row_keys1[i], row_keys2[j]) for i, j in row_out}
+            report.n_pairs = len(row_out) - len(head)  # same convention as the map: query-species row excluded
+            capacity = allowed_row_pair_capacity(k1, k2, kk)
+            if capacity < target_rows:
+                infeasible = f"infeasible: only {capacity} allowed row pairs exist for target depth {target_rows}"
+        if pairing not in ("random-rows", "permute-partners"):
+            report.n_pairs = len(new_pairs)
+        if pairing == "permute-partners":
+            report.retained_known = 0  # measured after the permutation, by the caller
+        elif pairing == "random-rows":
+            report.retained_known = sum((row_keys1[i], row_keys2[j]) in known for i, j in row_out)
+        else:
+            report.retained_known = len(set(new_pairs) & known)
+        report.finalise()
+        if infeasible:  # distinguishes a truly impossible control from an exhausted sampling budget
+            report.notes.append(infeasible)
+            report._pre_notes = list(report.notes)
+            report.valid = False
+        return species_out, row_out, report
 
     @staticmethod
     def __make_blocked(
@@ -733,7 +890,7 @@ class PairedMSA(MSA):
         enforce_ref_match: bool = False,
         **kwargs
     ) -> 'PairedMSA':
-        msa_lines, chain_a_length = cls.join_msa(
+        msa_lines, chain_a_length, report = cls._join_msa(
             msa1, 
             msa2, 
             blocked=blocked, 
@@ -743,9 +900,43 @@ class PairedMSA(MSA):
             **kwargs
         )
         if len(msa_lines) > 0:
-            return cls(lines=msa_lines, chain_a_length=chain_a_length)
+            return cls(lines=msa_lines, chain_a_length=chain_a_length, pairing_info=report)
         else:
-            raise AttributeError(f"Pairing {msa1} and {msa2} resulted in no pairs.")
+            raise UnpairableError(f"Pairing {msa1} and {msa2} resulted in no pairs.")
+
+    @classmethod
+    def read(cls, file: str | TextIOWrapper, chain_a_length: int) -> 'PairedMSA':
+        """Read a paired A3M written by :meth:`MSA.write` (e.g. by ``yunta pair``), without re-pairing.
+
+        ``chain_a_length`` is the width of the first chain (stored in the ``yunta pair``
+        sidecar JSON); the file itself has no chain boundary.
+
+        >>> import io
+        >>> line = PairedMSALine(name=">sp|P1|P1_X:::>sp|Q2|Q2_X", description="a:::b", sequence="ACDE")
+        >>> buf = io.StringIO(); PairedMSA(lines=[line], chain_a_length=3).write(buf)
+        >>> back = PairedMSA.read(io.StringIO(buf.getvalue()), 3)
+        >>> back.ids, back.chain_a_length, back.chain_b_length, back.sequences()
+        (('P1', 'Q2'), 3, 1, ['ACDE'])
+        """
+        opened = isinstance(file, (str, os.PathLike))
+        handle = open(file) if opened else file
+        try:
+            text = handle.read()
+        finally:
+            if opened:
+                handle.close()
+        lines, header, seq = [], None, []
+        for raw in text.splitlines() + [">"]:
+            if raw.startswith(">"):
+                if header is not None:
+                    name, _, description = header.partition(" ")
+                    lines.append(PairedMSALine(name=name, description=description, sequence="".join(seq)))
+                header, seq = raw[1:], []
+            elif raw.strip():
+                seq.append(raw.strip())
+        if not lines:
+            raise UnpairableError(f"No sequences in paired MSA {file}.")
+        return cls(lines=lines, chain_a_length=chain_a_length)
 
     @classmethod
     def from_file(

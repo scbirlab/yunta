@@ -34,6 +34,26 @@ class InteractionMetrics:
     top_B: Iterable[int] = field(metadata={"named": True})
     # weights_A: Iterable[float] = field(metadata={"named": True})
     # weights_B: Iterable[float] = field(metadata={"named": True})
+    # Provenance, filled in by the runner. ``score_mode`` is "whole" when the complex went through
+    # the method in one call, and "blockwise" when it was chunked: chunked scores come from
+    # independent sub-models and are approximations, not values for any one physical complex.
+    score_mode: str = field(init=False, default="whole")
+    pairing_method: str = field(init=False, default="map")
+    pairing_seed: int = field(init=False, default=None)
+    pairing_target_depth: int = field(init=False, default=None)
+    pairing_depth: int = field(init=False, default=None)
+    pairing_retained_known: int = field(init=False, default=None)
+    pairing_valid: bool = field(init=False, default=True)
+    # The alignment actually scored (after the gap filter), for the real pairing and, for a
+    # control, the real reference put through the same filter.
+    pairing_final_depth: int = field(init=False, default=None)
+    pairing_final_target_depth: int = field(init=False, default=None)
+    pairing_mean_gap: float = field(init=False, default=None)
+    pairing_reference_n_eff: float = field(init=False, default=None)
+    pairing_reference_mean_gap: float = field(init=False, default=None)
+    pairing_final_multiplicity_ok: bool = field(init=False, default=None)
+    pairing_final_composition_ok: bool = field(init=False, default=None)
+    pairing_final_retained_real: int = field(init=False, default=None)
 
     def __post_init__(self):
         # Best guess from the ID; callers that know the true IDs (which may contain

@@ -1,5 +1,5 @@
 """."""
-from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple, Iterable, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple, Iterable, Mapping, Optional, Union
 import os
 import random
 import sys
@@ -14,6 +14,7 @@ else:
     ndarray, ArrayLike = Any, Any
 
 from .modelling import make_model_runner
+from ..chunking import Block, assemble_matrix, assemble_vector
 from .scoring import _post_score_ppi, get_contact_matrix
 from ...io import save_design
 from ...structs.msa import PairedMSA
@@ -120,46 +121,34 @@ def af2(
     inv_contact_dists, contact_dists = get_contact_matrix(
         unrelaxed_protein,
     )
-    return inv_contact_dists, contact_dists, prediction_result
+    import numpy as np
+    compact = {"plddt": np.asarray(prediction_result["plddt"], dtype=np.float32)}  # drop the large PAE/distogram arrays
+    if "ptm" in prediction_result:
+        compact["ptm"] = float(prediction_result["ptm"])
+    return inv_contact_dists, contact_dists, compact
 
 
 def post_af2(
     paired_msa: PairedMSA,
-    results: Dict[Tuple, Any]
-) -> ndarray:
+    results: List[Tuple[Block, tuple]],
+) -> Dict[str, Any]:
+    """Score the interface from the blocks' C-beta distances and pLDDT.
+
+    ``results`` is ``[(block, (contact_dists, compact_prediction)), ...]``. Each block's pLDDT is
+    averaged over every block containing the residue, and residue pairs no block modelled are
+    ``inf`` apart so they never count as contacts. pTM is only defined for a whole-complex call.
+    """
     import numpy as np
-    if len(results) == 1:
-        (i0, j0, n, m), (contact_block, plddt_block) = next(iter(results.items()))
-        contact_dist = contact_block
-        plddt = plddt_block["plddt"]
-        ptm = plddt_block.get("ptm")
-    else:
-        n_msa_columns = paired_msa.seq_length
-        contact_dist = np.zeros(
-            (n_msa_columns, n_msa_columns), 
-            dtype=np.float32,
-        )
-        plddt = np.zeros(
-            (n_msa_columns,), 
-            dtype=np.float32,
-        )
-        for (i0, j0, n, m), (contact_block, plddt_block) in results.items():
-            si, sj = slice(i0, i0 + n), slice(j0, j0 + m)
-            plddt_block = plddt_block["plddt"]
-            if i0 == j0:
-                contact_dist[si, si] = contact_block
-                plddt[si] = plddt_block[:n]
-            else:
-                contact_dist[si, sj] = contact_block[:n, n:]
-                contact_dist[sj, si] = contact_block[n:, :n]
-                plddt[sj] = plddt_block[n:]
-        ptm = None
-    contact_dist_interaction = contact_dist[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
+    n_cols, len_a = paired_msa.seq_length, paired_msa.chain_a_length
+    contact_dist = assemble_matrix(((block, extras[0]) for block, extras in results), n_cols, fill=np.inf)
+    plddt = assemble_vector(((block, extras[1]["plddt"]) for block, extras in results), n_cols)
+    whole = [extras[1] for block, extras in results if block.is_whole]
+    ptm = whole[0].get("ptm") if len(whole) == 1 else None
     return _post_score_ppi(
-        contact_dist_interaction,
+        contact_dist[:len_a, len_a:],
         plddt,
         ptm,
-        chain_a_length=paired_msa.chain_a_length,
+        chain_a_length=len_a,
         contact_radius=8.,
     )
 
