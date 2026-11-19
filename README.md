@@ -103,6 +103,14 @@ The idea of using DCA, [RoseTTAFold](https://github.com/RosettaCommons/RoseTTAFo
 
 `yunta` puts these algorithms in one place with easy installation, a command-line interface, and a Python API. It also enables interspecies co-evolutionary analysis using a built-in host-pathogen interaction mapping.
 
+## Memory and speed
+
+**DCA.** DCA prunes residue states never seen at a site (exact), computes sequence weights and the covariance in
+tiles (the M x M identity matrix is never built), streams the alignment in row slabs (so deep alignments never hold
+the whole one-hot matrix), inverts by Cholesky (LU as a fallback) and accumulates coupling norms tile by tile. The
+straight port is kept as `_calculate_dca_reference`; `benchmarks/bench_dca.py` compares the two, and the tests check
+that they agree.
+
 ## Command-line usage
 
 ```bash

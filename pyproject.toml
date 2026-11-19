@@ -90,3 +90,6 @@ build-backend = "setuptools.build_meta"
 
 [test]
 deps = ["pytest>=7.4", "pytest-cov", "yunta[dev]"]
+
+[tool.pytest.ini_options]
+markers = ["slow: expensive tests, e.g. inverts large matrices or runs the vendored AF2 model on CPU (deselect with -m 'not slow')"]
