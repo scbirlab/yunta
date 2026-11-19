@@ -29,6 +29,7 @@ classifiers = [
 dependencies = [
   "bioino",
   "carabiner-tools[mpl,pd]>=0.0.5.post3",
+  "filelock>=3.12",
   "openpyxl==3.1.0",
   "requests",
   "torch>=2.3",
@@ -64,6 +65,9 @@ af_cuda11 = [
 rf2t = [
   "rf2t-micro",
 ]
+of3 = [
+  "openfold3>=0.5.1",
+]
 dev = [
   "pytest",
   "flake8",
@@ -91,4 +95,4 @@ build-backend = "setuptools.build_meta"
 deps = ["pytest>=7.4", "pytest-cov", "yunta[dev]"]
 
 [tool.pytest.ini_options]
-markers = ["slow: expensive tests, e.g. inverts large matrices or runs the vendored AF2 model on CPU (deselect with -m 'not slow')"]
+markers = ["slow: expensive tests, e.g. runs the vendored AF2 model on CPU or inverts large matrices (deselect with -m 'not slow')"]

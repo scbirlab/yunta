@@ -20,7 +20,7 @@ plain arrays and metric dataclasses, so the class stays a thin batch wrapper ove
 Examples
 ========
 >>> CoevoPredictor.METHODS
-('dca', 'rf2t', 'af2')
+('dca', 'rf2t', 'af2', 'of3')
 """
 
 from collections.abc import Callable, Iterable, Mapping
@@ -29,12 +29,12 @@ from dataclasses import dataclass, field
 from carabiner import print_err
 from tqdm.auto import tqdm
 
-from .interactions import AF2Runner, DCARunner, RF2TRunner
+from .interactions import AF2Runner, DCARunner, OF3Runner, RF2TRunner
 from .interactions.runner import DEFAULT_CHUNKSIZE, _pair_msas
 from .structs.msa import MSA, PairedMSA
 from .structs.pairing import InvalidControlError, log_rejections
 
-_RUNNERS = {"dca": DCARunner, "rf2t": RF2TRunner, "af2": AF2Runner}
+_RUNNERS = {"dca": DCARunner, "rf2t": RF2TRunner, "af2": AF2Runner, "of3": OF3Runner}
 
 
 @dataclass
@@ -69,7 +69,7 @@ class CoevoPredictor:
     cpu: bool = False
     chunksize: int | None = DEFAULT_CHUNKSIZE  # None: whole complex; an integer opts in to chunking
 
-    METHODS = ("dca", "rf2t", "af2")
+    METHODS = ("dca", "rf2t", "af2", "of3")
 
     paired: list = field(init=False, default_factory=list)
     depths: list = field(init=False, default_factory=list)

@@ -132,10 +132,10 @@ yunta pair A.a3m --msa2 B.a3m --interspecies --pairing rewired  --seed 1 -o pair
 
 # Predict from exactly that saved pairing (the .json sidecar written by `pair` holds the chain
 # boundary, pairing method, seed and diagnostics) ...
-yunta coevo paired/A-B.rewired.a3m --paired -m dca af2 -o results/
+yunta coevo paired/A-B.rewired.a3m --paired -m dca af2 of3 -o results/
 
 # ... or pair and predict in one go; the control seed is recorded in the metrics
-yunta coevo A.a3m --msa2 B.a3m --pairing rewired -m dca af2 -o results/
+yunta coevo A.a3m --msa2 B.a3m --pairing rewired -m dca af2 of3 --structures models/ -o results/
 ```
 
 **Controls.** `--pairing`: `map` (default), `rewired` (degree-preserving rewiring of the species-pair
@@ -161,17 +161,53 @@ stochastic variation, too few effective sequences or poor predictions could each
 that does exceed it is not, by itself, evidence of a physical interaction, because shared phylogeny can
 also generate correlated variation between families (see `yunta/structs/pairing.py`).
 
+**Scores.** AF2 and OpenFold3 report per-chain/interface pLDDT, pDockQ, pDockQ2, pTM, ipTM, actifpTM, ipSAE, LIS
+and mean inter-chain PAE. Every score is computed by the same code (`yunta/interactions/confidence.py`) from one
+canonical record that each backend hands over (pLDDT on a 0-100 scale, PAE bin probabilities, contact probability);
+unit mistakes (a 0-1 pLDDT, logits instead of probabilities, PAE not in Angstrom) raise instead of skewing a score.
+So `iptm` means the same thing whichever model produced it. pTM and ipTM are recomputed from the PAE bin
+probabilities rather than taken from the model; the models' own values are kept for cross-checking
+(`ptm_af2`; `ptm_model` and `iptm_model` for OpenFold3). OpenFold3 computes the PAE probabilities and contact
+probabilities but does not save them, so yunta switches on the settings that keep them and captures them from its output
+writer; if that capture fails, pTM, ipTM and actifpTM are `NaN` (a warning says so) and the rest still work.
+pDockQ2, ipSAE and LIS follow the original papers and Dunbrack's `ipsae.py`; pTM/ipTM are tested against the AlphaFold reference.
+
 **Whole vs blockwise.** Chunking is opt-in: by default (`chunksize=None`, no `--chunksize`) the whole complex
 is modelled in one call, and a warning is printed if the estimated memory exceeds what is free. With
 `--chunksize N`, an alignment longer than `N` is split into blocks that are modelled independently, and the metrics say `score_mode=blockwise`. Blockwise scores are
 approximations built from independent sub-models, not values for any one physical complex; they are
-not comparable with `score_mode=whole`. AF2 only runs inter-chain blocks when chunked, and its pTM needs a single
-model, so it is `NaN` when chunked. For DCA the
+not comparable with `score_mode=whole`. Structure backends only run inter-chain blocks and write no
+PDB when chunked; pTM, ipTM and actifpTM need a single model and are `NaN` when chunked. For DCA the
 approximation was measured on real yeast MSAs (`benchmarks/chunked_vs_full_dca.py`): Spearman
 0.82-0.89 to the unchunked matrix, 42-66% overlap in the top 50 residue pairs, and chunked scores
 about 1.8-3.6x more spread out, so do not mix chunked and unchunked DCA scores.
 
 See "Memory and speed" above for the memory options that usually make chunking unnecessary.
+
+**OpenFold3 status.** The OpenFold3 backend is tested against a stand-in model and the 0.5.1 API only; it has not yet
+been run on a GPU with real weights (the gated smoke test `test/test_of3_gpu_smoke.py`, enabled with
+`YUNTA_OF3_SMOKE=1`, is pending). It stays behind its optional dependency until that has run.
+
+**Structures.** `--structures DIR` writes a PDB for AF2 and OpenFold3 (also `structure=True` in Python,
+returned as `metrics.structure`). Only for whole-complex calls: never for a chunked complex.
+
+### Parallel jobs and weight downloads
+
+Weight downloads (AlphaFold2 parameters, OpenFold3 checkpoint) are single-flight: when many
+processes start at once on a shared filesystem, one downloads while the others wait on a
+[`filelock`](https://py-filelock.readthedocs.io/) next to the target file, then reuse the result.
+Files appear by atomic rename, so no process can load a half-written file, and a killed
+download releases its lock automatically. Set `YUNTA_DOWNLOAD_TIMEOUT` (seconds) to stop
+waiting eventually, and `YUNTA_LOCK_TYPE=soft` on filesystems without `flock` support (a soft
+lock left by a crashed job must then be deleted by hand). Set `YUNTA_JAX_CACHE=/shared/dir` to
+share AlphaFold2's compiled XLA programs between workers. RoseTTAFold2t weights are fetched by
+`rf2t-micro` itself and are not covered by this lock.
+
+OpenFold3 (`pip install "yunta[of3]"`) downloads its default weights on first use to
+`$OPENFOLD_CACHE` or `~/.openfold3`; use `--of3-checkpoint` for your own. Only the paired MSA is
+given to the model (no MSA server, no templates), so any signal comes from the pairing. The query
+schema and runner arguments are checked against the real OpenFold3 package in
+`test/test_of3_real_api.py`; the model itself has not been run end-to-end here.
 
 The older `dca-*`, `rf2t-*` and `af2-*` commands remain for compatibility.
 

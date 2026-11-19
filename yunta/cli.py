@@ -262,12 +262,14 @@ def _coevo(args: Namespace) -> None:
             "adaptive_msa": not args.fixed_msa_padding,
             "recycle_tolerance": args.recycle_tolerance,
         }},
+        "of3": {"model_kwargs": {"checkpoint": args.of3_checkpoint}},
         "rf2t": {}, "dca": {},
     }
     run_kwargs = {
         "dca": {"apc": args.apc},
-        "af2": {},
+        "af2": {"structure": bool(args.structures)},
         "rf2t": {},
+        "of3": {"structure": bool(args.structures)},
     }
     with predictor:
         for method in args.method:
@@ -280,6 +282,10 @@ def _coevo(args: Namespace) -> None:
                         os.path.join(args.output, f"{base}.npz"),
                         matrix=pred.matrix, interaction=pred.interaction,
                     )
+                    if args.structures and getattr(pred.metrics, "structure", None):
+                        os.makedirs(args.structures, exist_ok=True)
+                        with open(os.path.join(args.structures, f"{base}.pdb"), "w") as f:
+                            f.write(pred.metrics.structure)
                     if args.plot is not None:
                         _plot_results(pred.matrix, pred.interaction, pred.metrics,
                                       output_dir=os.path.join(args.plot, method))
@@ -371,12 +377,12 @@ def main() -> None:
     blocked = CLIOption('--blocked', action='store_true',
                         help='Append unpaired sequences as blocks below the paired rows.')
     methods = CLIOption('--method', '-m', nargs='+', default=['dca'],
-                        choices=['dca', 'rf2t', 'af2'],
+                        choices=['dca', 'rf2t', 'af2', 'of3'],
                         help='Methods to run, in order; each model is loaded once. Default: dca.')
     chunksize = CLIOption('--chunksize', type=int, default=None,
                           help='Opt in to chunked (blockwise) inference of at most this many alignment columns per '
                                'model call. Default: off, the whole complex is modelled in one call. Chunked scores '
-                               'are approximations (score_mode=blockwise). '
+                               'are approximations (score_mode=blockwise) and chunked complexes have no structure. '
                                'Try --subbatch-size / --unified-memory (AF2) before chunking.')
     output_dir = CLIOption('--output', '-o', type=str, required=True, help='Output directory.')
     subbatch_size = CLIOption('--subbatch-size', type=int, default=None,
@@ -392,6 +398,14 @@ def main() -> None:
     fixed_msa_padding = CLIOption('--fixed-msa-padding', action='store_true',
                                   help='AF2: pad the MSA to the stock 512 clusters / 5120 extra rows instead of the '
                                        'alignment\'s real depth (same results, more memory and time).')
+
+    of3_checkpoint = CLIOption('--of3-checkpoint', type=str, default=None,
+                               help='OpenFold3 checkpoint (.pt). Default: download the default weights on first use '
+                                    'to $OPENFOLD_CACHE or ~/.openfold3.')
+    structures = CLIOption('--structures', type=str, default=None,
+                           help='Directory for predicted structures (PDB, pLDDT in the B-factor column) from AF2 and '
+                                'OpenFold3, named <method>.<pair>.pdb. Only for complexes modelled in one call '
+                                '(i.e. not chunked).')
 
     base_opts = [inputs_list2, list_file, interspecies, strict_match, output_file, plot]
 
@@ -438,7 +452,7 @@ def main() -> None:
         description='Predict inter-protein interactions with dca, rf2t and/or af2, for all pairs of the inputs.',
         main=_coevo,
         options=[inputs_list, inputs_list2, list_file, interspecies, strict_match, pairing, seed,
-                 allow_invalid_controls, paired_input, max_gap_fraction, methods, chunksize, apc, params, recycles, subbatch_size, unified_memory, recycle_tolerance, fixed_msa_padding, cpu, plot, output_dir],
+                 allow_invalid_controls, paired_input, max_gap_fraction, methods, chunksize, apc, params, recycles, subbatch_size, unified_memory, recycle_tolerance, fixed_msa_padding, cpu, plot, structures, of3_checkpoint, output_dir],
     )
 
     app = CLIApp(

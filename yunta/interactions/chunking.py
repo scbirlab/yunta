@@ -193,6 +193,23 @@ def assemble_matrix(
     return full
 
 
+PAE_FILL = 31.75  # AF2's maximum PAE bin: residue pairs no block saw count as maximally uncertain
+
+
+def assemble_pae(results, n_cols: int) -> np.ndarray | None:
+    """PAE for the full complex from per-block ``extras[1]["pae"]``, or ``None`` if any block lacks it.
+
+    For one whole-complex call this is that call's PAE. For chunked inference it is a
+    **blockwise approximation**: every inter-chain entry comes from an independent sub-model of
+    that block's residues, so it is not the PAE of any single physical complex. Entries no
+    block covered are ``PAE_FILL``.
+    """
+    results = list(results)
+    if not results or any(extras[1].get("pae") is None for _, extras in results):
+        return None
+    return assemble_matrix(((b, e[1]["pae"]) for b, e in results), n_cols, fill=PAE_FILL)
+
+
 def assemble_vector(
     results: Iterable[tuple[Block, np.ndarray]],
     n_cols: int,

@@ -1,5 +1,5 @@
 """Second review: final-alignment validation, strict-by-default controls, composition-preserving
-control, deterministic feasibility, and chunking opt-in."""
+control, deterministic feasibility, chunking opt-in, and structures only for whole-complex calls."""
 import json
 from argparse import Namespace
 from pathlib import Path
@@ -166,11 +166,12 @@ def test_random_rows_reports_infeasible_distinctly():
 
 # --- chunking is opt-in -------------------------------------------------------------------------------
 class _CountingRunner(Runner):
+    supports_structure = True
     calls = None
 
     @staticmethod
-    def _run_chunk(paired_msa, model=None, **kw):
-        _CountingRunner.calls.append(len(paired_msa[0]))
+    def _run_chunk(paired_msa, model=None, return_structure=None, **kw):
+        _CountingRunner.calls.append((len(paired_msa[0]), return_structure))
         n = len(paired_msa[0])
         return np.zeros((n, n)), {}
 
@@ -186,10 +187,29 @@ def test_defaults_never_chunk_even_beyond_the_old_750_column_default(wide):
     assert [len(b) for b in plan_blocks(500, 420)] == [920]
     _CountingRunner.calls = []
     _CountingRunner().run_paired(wide, cpu=True)
-    assert _CountingRunner.calls == [920]
+    assert _CountingRunner.calls == [(920, False)]
     _CountingRunner.calls = []
     _CountingRunner().run_paired(wide, cpu=True, chunksize=500, blocks="all")
-    assert len(_CountingRunner.calls) > 1 and all(n <= 500 for n in _CountingRunner.calls)
+    assert len(_CountingRunner.calls) > 1 and all(n <= 500 for n, _ in _CountingRunner.calls)
+
+
+def test_structure_is_requested_only_for_a_single_whole_complex_call(wide, capsys):
+    _CountingRunner.calls = []
+    _CountingRunner().run_paired(wide, cpu=True, structure=True)
+    assert _CountingRunner.calls == [(920, True)]
+    _CountingRunner.calls = []
+    _CountingRunner().run_paired(wide, cpu=True, structure=True, chunksize=500)
+    assert len(_CountingRunner.calls) > 1 and not any(flag for _, flag in _CountingRunner.calls)  # no per-chunk PDBs
+    assert "no structure for a chunked complex" in capsys.readouterr().err
+    _CountingRunner.calls = []
+    _CountingRunner().run_paired(wide, cpu=True, return_structure=True)  # older spelling still works
+    assert _CountingRunner.calls == [(920, True)]
+
+
+def test_runner_without_structure_support_warns_and_does_not_pass_the_flag(wide, capsys):
+    from yunta.interactions import DCARunner
+    DCARunner().run_paired(PairedMSA.from_msa(*_synthetic_paired_msas(n_rows=30, len_a=10, len_b=8)), cpu=True, structure=True)
+    assert "cannot produce structures" in capsys.readouterr().err
 
 
 def test_whole_complex_memory_warning_suggests_chunking(wide, capsys, monkeypatch):

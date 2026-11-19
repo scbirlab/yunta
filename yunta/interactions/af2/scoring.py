@@ -27,8 +27,8 @@ def _pdockq(
     >>> _pdockq(.9, 100)
     0.018284286329741297
     """
-    x = avg_interface_plddt * np.log10(n_interface_contacts)
-    return .724 / (1 + np.exp(-.052 * (x - 152.611))) + .018
+    from ..confidence import pdockq
+    return pdockq(avg_interface_plddt, n_interface_contacts)
 
 
 def get_contact_matrix(unrelaxed_protein) -> Tuple[ndarray, ...]:

@@ -115,13 +115,43 @@ class RF2TMetrics(InteractionMetrics):
 
 
 @dataclass
+class OF3Metrics(InteractionMetrics):
+    """Storage for OpenFold3 model metrics (pTM/ipTM/actifpTM computed by yunta; ``*_model`` are OpenFold3's own)."""
+    _name: ClassVar[str] = "OF3"
+    n_contacts: int = field(metadata={"named": True})
+    mean_plddt_a: float = field(metadata={"named": True})
+    mean_plddt_b: float = field(metadata={"named": True})
+    mean_interface_plddt: float = field(metadata={"named": True})
+    pdockq: float = field(metadata={"named": True})
+    pdockq2: float = field(metadata={"named": True})
+    ptm: float = field(metadata={"named": True})
+    iptm: float = field(metadata={"named": True})
+    actifptm: float = field(metadata={"named": True})
+    ipsae: float = field(metadata={"named": True})
+    lis: float = field(metadata={"named": True})
+    mean_interchain_pae: float = field(metadata={"named": True})
+    ptm_model: float = field(metadata={"named": True})
+    iptm_model: float = field(metadata={"named": True})
+    seed: int = field(metadata={"named": True})
+
+
+@dataclass
 class AF2Metrics(InteractionMetrics):
     """Storage for AlphaFold2 model metrics.
     """
     _name: ClassVar[str] = "AF2"
     n_contacts: int = field(metadata={"named": True})
+    mean_plddt_a: float = field(metadata={"named": True})
+    mean_plddt_b: float = field(metadata={"named": True})
     mean_interface_plddt: float = field(metadata={"named": True})
     pdockq: float = field(metadata={"named": True})
+    pdockq2: float = field(metadata={"named": True})
     ptm: float = field(metadata={"named": True})
+    iptm: float = field(metadata={"named": True})
+    actifptm: float = field(metadata={"named": True})
+    ipsae: float = field(metadata={"named": True})
+    lis: float = field(metadata={"named": True})
+    mean_interchain_pae: float = field(metadata={"named": True})
+    ptm_af2: float = field(metadata={"named": True})
     seed: int = field(metadata={"named": True})
     # max_recycles: int = field(metadata={"named": True})

@@ -168,7 +168,7 @@ def test_af2_post_scoring_matches_unchunked_geometry(blocks):
 
     def block_result(block):
         cols = block.columns() if not block.is_whole else np.arange(len_a + len_b)
-        return (block, (dist[np.ix_(cols, cols)], {"plddt": plddt[cols], "ptm": .5}))
+        return (block, (dist[np.ix_(cols, cols)], {"plddt": plddt[cols], "ptm": .5, "pae": np.full((len(cols), len(cols)), 5., dtype=np.float32)}))
 
     expected_contacts = int((dist[:len_a, len_a:] <= 8.).sum())
     assert expected_contacts > 0
@@ -177,4 +177,29 @@ def test_af2_post_scoring_matches_unchunked_geometry(blocks):
         info = post_af2(paired, results)
         assert info["n_contacts"] == expected_contacts
         assert 0. < info["pdockq"] < 1.
-        assert (info["ptm"] == .5) == (chunksize == 1000)  # whole-complex-only score
+        assert (info["ptm_af2"] == .5) == (chunksize == 1000)  # whole-complex-only scores
+        assert not np.isnan(info["ipsae"]) and not np.isnan(info["lis"])  # blockwise approximation when chunked
+        assert np.isnan(info["iptm"])  # needs one model's probabilities; no tm matrix was provided
+
+
+# ----------------------------------------------------------------------------------------- review follow-ups
+from yunta.interactions.chunking import PAE_FILL, assemble_pae
+from yunta.interactions.runner import AF2Runner, OF3Runner
+
+
+def test_structure_backends_default_to_interchain_blocks():
+    assert AF2Runner.default_blocks == OF3Runner.default_blocks == "interchain"
+    for block in plan_blocks(300, 200, chunksize=100, blocks=AF2Runner.default_blocks):
+        assert not block.intra_chain(), "an intra-chain block would put a fake chain break inside a chain"
+
+
+def test_assemble_pae_whole_blockwise_and_missing():
+    n_a, n_b = 6, 4
+    full = np.arange((n_a + n_b) ** 2, dtype=np.float32).reshape(n_a + n_b, -1) % 30
+    blocks = plan_blocks(n_a, n_b, chunksize=5, blocks="interchain")
+    results = [(b, (None, {"pae": full[np.ix_(b.columns(), b.columns())]})) for b in blocks]
+    out = assemble_pae(results, n_a + n_b)
+    assert np.array_equal(out[:n_a, n_a:], full[:n_a, n_a:]) and np.array_equal(out[n_a:, :n_a], full[n_a:, :n_a])
+    assert (out[:n_a, :n_a] == PAE_FILL).all()  # unseen intra-chain entries
+    results[0][1][1]["pae"] = None
+    assert assemble_pae(results, n_a + n_b) is None

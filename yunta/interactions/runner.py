@@ -15,7 +15,7 @@ else:
 
 import numpy as np
 
-from .chunking import Block, run_blocks
+from .chunking import Block, plan_blocks, run_blocks
 from .scoring import score_contact_map
 from ..structs.metrics import AF2Metrics, DCAMetrics, RF2TMetrics, InteractionMetrics
 from ..structs.msa import MSA, PairedMSA, __BLOCK_GAPS__ as _BLOCK_MARK
@@ -177,6 +177,7 @@ class Runner(ABC):
     metric_container = InteractionMetrics
     use_sequences = False
     use_id = False
+    supports_structure = False  # can emit a PDB for a whole-complex call
     stochastic = False  # if True, a seed is drawn up front so it can be recorded
 
     @staticmethod
@@ -282,14 +283,17 @@ class Runner(ABC):
         chunksize: int | None = DEFAULT_CHUNKSIZE,
         model_kwargs: dict | None = None,
         blocks: str | None = None,
+        structure: bool = False,
         **kwargs
     ):
         """Run on an already-paired MSA (so one pairing can feed several methods).
 
         ``chunksize=None`` (the default) models the whole complex in one call; pass an integer to
         opt in to blockwise inference of at most that many columns per call (an approximation:
-        see ``score_mode``).
+        see ``score_mode``). ``structure=True`` returns a PDB (AF2 and OpenFold3) in
+        ``metrics.structure``; it is only generated for a whole-complex call, never per chunk.
         """
+        structure = structure or bool(kwargs.pop("return_structure", False))  # older spelling
         if self.stochastic and kwargs.get("seed") is None:
             kwargs["seed"] = random.randrange(2**31 - 1)  # recorded in the metrics
         print_err("[INFO] Generated", paired_msa)
@@ -304,6 +308,20 @@ class Runner(ABC):
         else:
             alignment, to_input = np.asarray(paired_msa.sequence_token_ids), None
         chunk_kwargs = self.prepare(paired_msa, cpu=cpu, **kwargs) | kwargs
+        plan = plan_blocks(
+            paired_msa.chain_a_length, paired_msa.chain_b_length,
+            chunksize=chunksize, blocks=blocks or self.default_blocks,
+        )
+        whole_call = len(plan) == 1 and plan[0].is_whole
+        if structure and not self.supports_structure:
+            print_err(f"[WARN] {type(self).__name__} cannot produce structures; ignoring structure=True.")
+        elif structure and not whole_call:
+            print_err(
+                f"[WARN] {paired_msa.name}: no structure for a chunked complex (a PDB needs one whole-complex "
+                "call); omit chunksize to model it whole."
+            )
+        if self.supports_structure:  # serialise PDB text only when the plan is a single whole-complex call
+            chunk_kwargs["return_structure"] = bool(structure and whole_call)
         if chunksize is None:
             self._warn_if_too_big(paired_msa, cpu)
         if self.use_id:
@@ -321,6 +339,7 @@ class Runner(ABC):
         result_interaction = results[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
         scores = score_contact_map(result_interaction)
         info = self.post_run(paired_msa, others, **kwargs)
+        structure = info.pop("structure", None)
         metrics = self.metric_container(
             ID=paired_msa.name, 
             seq_len=paired_msa.seq_length,
@@ -334,6 +353,7 @@ class Runner(ABC):
             **info,
         )
         metrics.uniprot_id_1, metrics.uniprot_id_2 = paired_msa.ids  # IDs may contain hyphens
+        metrics.structure = structure  # PDB text or None; not a metrics column
         metrics.score_mode = "whole" if len(others) == 1 and others[0][0].is_whole else "blockwise"
         if metrics.score_mode == "blockwise":
             print_err(
@@ -360,6 +380,7 @@ class AF2Runner(Runner):
     # Only inter-chain blocks: an intra-chain block of two segments would be modelled as two
     # chains, putting an artificial chain break inside a real chain.
     default_blocks = "interchain"
+    supports_structure = True
     metric_container = AF2Metrics
     use_sequences = True
     use_id = True
@@ -386,6 +407,7 @@ class AF2Runner(Runner):
         _id: str,
         model: Callable | None = None,
         seed: int | None = None,
+        return_structure: bool = False,
         **kwargs
     ):
         from .af2 import run_af2
@@ -395,6 +417,7 @@ class AF2Runner(Runner):
             _id=_id,
             model=model,
             seed=seed,
+            return_structure=return_structure,
         )
 
     @staticmethod
@@ -407,6 +430,48 @@ class AF2Runner(Runner):
         from .af2 import post_af2
         info = post_af2(paired_msa, results)
         return info | {"seed": seed}
+
+
+class OF3Runner(Runner):
+    """OpenFold3 (optional dependency; weights are downloaded on first use)."""
+
+    use_sequences = True
+    use_id = True
+    stochastic = True
+    supports_structure = True
+    default_blocks = "interchain"  # see AF2Runner
+
+    @property
+    def metric_container(self):  # imported lazily so the base install stays light
+        from ..structs.metrics import OF3Metrics
+        return OF3Metrics
+
+    @staticmethod
+    def make_model(cpu=False, **kwargs):
+        from .of3.run import make_of3_model
+        return make_of3_model(cpu=cpu, **kwargs)
+
+    @staticmethod
+    def _run_chunk(
+        paired_msa: ArrayLike,
+        chain_a_length: int,
+        _id: str,
+        model: Callable | None = None,
+        seed: int | None = None,
+        to_input: Callable | None = None,
+        return_structure: bool = False,
+        **kwargs
+    ):
+        from .of3.run import run_of3
+        return run_of3(
+            paired_msa, chain_a_length, _id, model=model, seed=seed, to_input=to_input,
+            return_structure=return_structure,
+        )
+
+    @staticmethod
+    def post_run(paired_msa, results, seed: int | None = None, **kwargs):
+        from .of3.run import post_of3
+        return post_of3(paired_msa, results) | {"seed": seed}
 
 
 class DCARunner(Runner):
