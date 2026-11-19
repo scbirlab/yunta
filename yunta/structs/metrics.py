@@ -34,9 +34,33 @@ class InteractionMetrics:
     top_B: Iterable[int] = field(metadata={"named": True})
     # weights_A: Iterable[float] = field(metadata={"named": True})
     # weights_B: Iterable[float] = field(metadata={"named": True})
+    # Provenance, filled in by the runner. ``score_mode`` is "whole" when the complex went through
+    # the method in one call, and "blockwise" when it was chunked: chunked scores come from
+    # independent sub-models and are approximations, not values for any one physical complex.
+    score_mode: str = field(init=False, default="whole")
+    pairing_method: str = field(init=False, default="map")
+    pairing_seed: int = field(init=False, default=None)
+    pairing_target_depth: int = field(init=False, default=None)
+    pairing_depth: int = field(init=False, default=None)
+    pairing_retained_known: int = field(init=False, default=None)
+    pairing_valid: bool = field(init=False, default=True)
+    # The alignment actually scored (after the gap filter), for the real pairing and, for a
+    # control, the real reference put through the same filter.
+    pairing_final_depth: int = field(init=False, default=None)
+    pairing_final_target_depth: int = field(init=False, default=None)
+    pairing_mean_gap: float = field(init=False, default=None)
+    pairing_reference_n_eff: float = field(init=False, default=None)
+    pairing_reference_mean_gap: float = field(init=False, default=None)
+    pairing_final_multiplicity_ok: bool = field(init=False, default=None)
+    pairing_final_composition_ok: bool = field(init=False, default=None)
+    pairing_final_retained_real: int = field(init=False, default=None)
 
     def __post_init__(self):
-        self.uniprot_id_1, self.uniprot_id_2 = self.ID.split('-')
+        # Best guess from the ID; callers that know the true IDs (which may contain
+        # hyphens, e.g. isoforms) overwrite these.
+        parts = self.ID.split('-')
+        mid = len(parts) // 2
+        self.uniprot_id_1, self.uniprot_id_2 = '-'.join(parts[:mid]), '-'.join(parts[mid:])
 
     def _get_named_params(self):
         return {f.name for f in fields(self) if f.metadata.get("named")}
@@ -47,6 +71,7 @@ class InteractionMetrics:
         mode: str = "w",
         skip_header: bool = False
     ) -> None:
+        opened_here = not isinstance(filename, TextIOWrapper)
         f = cast(filename, to=TextIOWrapper, mode=mode)
         if hasattr(f, 'name') and not f.name.startswith('<'):
             if dirname := os.path.dirname(f.name):
@@ -69,6 +94,8 @@ class InteractionMetrics:
             for k, v in asdict(self).items()
         }
         w.writerow(row)
+        if opened_here:  # was never closed, so output relied on garbage collection to flush
+            f.close()
         return None
 
 
@@ -88,13 +115,43 @@ class RF2TMetrics(InteractionMetrics):
 
 
 @dataclass
+class OF3Metrics(InteractionMetrics):
+    """Storage for OpenFold3 model metrics (pTM/ipTM/actifpTM computed by yunta; ``*_model`` are OpenFold3's own)."""
+    _name: ClassVar[str] = "OF3"
+    n_contacts: int = field(metadata={"named": True})
+    mean_plddt_a: float = field(metadata={"named": True})
+    mean_plddt_b: float = field(metadata={"named": True})
+    mean_interface_plddt: float = field(metadata={"named": True})
+    pdockq: float = field(metadata={"named": True})
+    pdockq2: float = field(metadata={"named": True})
+    ptm: float = field(metadata={"named": True})
+    iptm: float = field(metadata={"named": True})
+    actifptm: float = field(metadata={"named": True})
+    ipsae: float = field(metadata={"named": True})
+    lis: float = field(metadata={"named": True})
+    mean_interchain_pae: float = field(metadata={"named": True})
+    ptm_model: float = field(metadata={"named": True})
+    iptm_model: float = field(metadata={"named": True})
+    seed: int = field(metadata={"named": True})
+
+
+@dataclass
 class AF2Metrics(InteractionMetrics):
     """Storage for AlphaFold2 model metrics.
     """
     _name: ClassVar[str] = "AF2"
     n_contacts: int = field(metadata={"named": True})
+    mean_plddt_a: float = field(metadata={"named": True})
+    mean_plddt_b: float = field(metadata={"named": True})
     mean_interface_plddt: float = field(metadata={"named": True})
     pdockq: float = field(metadata={"named": True})
+    pdockq2: float = field(metadata={"named": True})
     ptm: float = field(metadata={"named": True})
+    iptm: float = field(metadata={"named": True})
+    actifptm: float = field(metadata={"named": True})
+    ipsae: float = field(metadata={"named": True})
+    lis: float = field(metadata={"named": True})
+    mean_interchain_pae: float = field(metadata={"named": True})
+    ptm_af2: float = field(metadata={"named": True})
     seed: int = field(metadata={"named": True})
     # max_recycles: int = field(metadata={"named": True})

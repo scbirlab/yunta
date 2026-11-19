@@ -29,27 +29,11 @@ from . import (
   common_modules, 
   folding, 
   layer_stack, 
-  lddt, 
   mapping, 
   prng, 
   quat_affine, 
   utils,
 )
-
-
-def softmax_cross_entropy(logits, labels):
-  """Computes softmax cross entropy given logits and one-hot class labels."""
-  loss = -jnp.sum(labels * jax.nn.log_softmax(logits), axis=-1)
-  return jnp.asarray(loss)
-
-
-def sigmoid_cross_entropy(logits, labels):
-  """Computes sigmoid cross entropy given logits and multiple class labels."""
-  log_p = jax.nn.log_sigmoid(logits)
-  # log(1 - sigmoid(x)) = log_sigmoid(-x), the latter is more numerically stable
-  log_not_p = jax.nn.log_sigmoid(-logits)
-  loss = -labels * log_p - (1. - labels) * log_not_p
-  return jnp.asarray(loss)
 
 
 def apply_dropout(*, tensor, safe_key, rate, is_training, broadcast_dim=None):
@@ -145,7 +129,6 @@ class AlphaFoldIteration(hk.Module):
                ensembled_batch,
                non_ensembled_batch,
                is_training,
-               compute_loss=False,
                ensemble_representations=False,
                return_representations=False):
 
@@ -210,8 +193,7 @@ class AlphaFoldIteration(hk.Module):
       head_factory = {
           'masked_msa': MaskedMsaHead,
           'distogram': DistogramHead,
-          'structure_module': functools.partial(
-              folding.StructureModule, compute_loss=compute_loss),
+          'structure_module': folding.StructureModule,
           'predicted_lddt': PredictedLDDTHead,
           'predicted_aligned_error': PredictedAlignedErrorHead,
           'experimentally_resolved': ExperimentallyResolvedHead,
@@ -219,19 +201,8 @@ class AlphaFoldIteration(hk.Module):
       heads[head_name] = (head_config,
                           head_factory(head_config, self.global_config))
 
-    total_loss = 0.
     ret = {}
     ret['representations'] = representations
-
-    def loss(module, head_config, ret, name, filter_ret=True):
-      if filter_ret:
-        value = ret[name]
-      else:
-        value = ret
-      loss_output = module.loss(value, batch)
-      ret[name].update(loss_output)
-      loss = head_config.weight * ret[name]['loss']
-      return loss
 
     for name, (head_config, module) in heads.items():
       # Skip PredictedLDDTHead and PredictedAlignedErrorHead until
@@ -244,8 +215,6 @@ class AlphaFoldIteration(hk.Module):
           # Extra representations from the head. Used by the structure module
           # to provide activations for the PredictedLDDTHead.
           representations.update(ret[name].pop('representations'))
-      if compute_loss:
-        total_loss += loss(module, head_config, ret, name)
 
     if self.config.heads.get('predicted_lddt.weight', 0.0):
       # Add PredictedLDDTHead after StructureModule executes.
@@ -253,8 +222,6 @@ class AlphaFoldIteration(hk.Module):
       # Feed all previous results to give access to structure_module result.
       head_config, module = heads[name]
       ret[name] = module(representations, batch, is_training)
-      if compute_loss:
-        total_loss += loss(module, head_config, ret, name, filter_ret=False)
 
     if ('predicted_aligned_error' in self.config.heads
         and self.config.heads.get('predicted_aligned_error.weight', 0.0)):
@@ -263,13 +230,8 @@ class AlphaFoldIteration(hk.Module):
       # Feed all previous results to give access to structure_module result.
       head_config, module = heads[name]
       ret[name] = module(representations, batch, is_training)
-      if compute_loss:
-        total_loss += loss(module, head_config, ret, name, filter_ret=False)
 
-    if compute_loss:
-      return ret, total_loss
-    else:
-      return ret
+    return ret
 
 
 class AlphaFold(hk.Module):
@@ -287,7 +249,6 @@ class AlphaFold(hk.Module):
       self,
       batch,
       is_training,
-      compute_loss=False,
       ensemble_representations=False,
       return_representations=False):
     """Run the AlphaFold model.
@@ -295,19 +256,12 @@ class AlphaFold(hk.Module):
     Arguments:
       batch: Dictionary with inputs to the AlphaFold model.
       is_training: Whether the system is in training or inference mode.
-      compute_loss: Whether to compute losses (requires extra features
-        to be present in the batch and knowing the true structure).
       ensemble_representations: Whether to use ensembling of representations.
       return_representations: Whether to also return the intermediate
         representations.
 
     Returns:
-      When compute_loss is True:
-        a tuple of loss and output of AlphaFoldIteration.
-      When compute_loss is False:
-        just output of AlphaFoldIteration.
-
-      The output of AlphaFoldIteration is a nested dictionary containing
+      The output of AlphaFoldIteration: a nested dictionary containing
       predictions from the various heads.
     """
 
@@ -323,9 +277,7 @@ class AlphaFold(hk.Module):
       }
       return jax.tree_map(jax.lax.stop_gradient, new_prev)
 
-    def do_call(prev,
-                recycle_idx,
-                compute_loss=compute_loss):
+    def do_call(prev, recycle_idx):
       if self.config.resample_msa_in_recycling:
         num_ensemble = batch_size // (self.config.num_recycle + 1)
         def slice_recycle_idx(x):
@@ -343,7 +295,6 @@ class AlphaFold(hk.Module):
           ensembled_batch=ensembled_batch,
           non_ensembled_batch=non_ensembled_batch,
           is_training=is_training,
-          compute_loss=compute_loss,
           ensemble_representations=ensemble_representations)
 
     if self.config.num_recycle:
@@ -371,8 +322,7 @@ class AlphaFold(hk.Module):
         num_iter = self.config.num_recycle
 
       body = lambda x: (x[0] + 1,  # pylint: disable=g-long-lambda
-                        get_prev(do_call(x[1], recycle_idx=x[0],
-                                         compute_loss=False)))
+                        get_prev(do_call(x[1], recycle_idx=x[0])))
       if hk.running_init():
         # When initializing the Haiku module, run one iteration of the
         # while_loop to initialize the Haiku modules used in `body`.
@@ -387,11 +337,9 @@ class AlphaFold(hk.Module):
       num_iter = 0
 
     ret = do_call(prev=prev, recycle_idx=num_iter)
-    if compute_loss:
-      ret = ret[0], [ret[1]]
 
     if not return_representations:
-      del (ret[0] if compute_loss else ret)['representations']  # pytype: disable=unsupported-operands
+      del ret['representations']
     return ret
 
 
@@ -992,15 +940,6 @@ class MaskedMsaHead(hk.Module):
             representations['msa'])
     return dict(logits=logits)
 
-  def loss(self, value, batch):
-    errors = softmax_cross_entropy(
-        labels=jax.nn.one_hot(batch['true_msa'], num_classes=23),
-        logits=value['logits'])
-    loss = (jnp.sum(errors * batch['bert_mask'], axis=(-2, -1)) /
-            (1e-8 + jnp.sum(batch['bert_mask'], axis=(-2, -1))))
-    return {'loss': loss}
-
-
 class PredictedLDDTHead(hk.Module):
   """Head to predict the per-residue LDDT to be used as a confidence measure.
 
@@ -1059,52 +998,6 @@ class PredictedLDDTHead(hk.Module):
     # Shape (batch_size, num_res, num_bins)
     return dict(logits=logits)
 
-  def loss(self, value, batch):
-    # Shape (num_res, 37, 3)
-    pred_all_atom_pos = value['structure_module']['final_atom_positions']
-    # Shape (num_res, 37, 3)
-    true_all_atom_pos = batch['all_atom_positions']
-    # Shape (num_res, 37)
-    all_atom_mask = batch['all_atom_mask']
-
-    # Shape (num_res,)
-    lddt_ca = lddt.lddt(
-        # Shape (batch_size, num_res, 3)
-        predicted_points=pred_all_atom_pos[None, :, 1, :],
-        # Shape (batch_size, num_res, 3)
-        true_points=true_all_atom_pos[None, :, 1, :],
-        # Shape (batch_size, num_res, 1)
-        true_points_mask=all_atom_mask[None, :, 1:2].astype(jnp.float32),
-        cutoff=15.,
-        per_residue=True)[0]
-    lddt_ca = jax.lax.stop_gradient(lddt_ca)
-
-    num_bins = self.config.num_bins
-    bin_index = jnp.floor(lddt_ca * num_bins).astype(jnp.int32)
-
-    # protect against out of range for lddt_ca == 1
-    bin_index = jnp.minimum(bin_index, num_bins - 1)
-    lddt_ca_one_hot = jax.nn.one_hot(bin_index, num_classes=num_bins)
-
-    # Shape (num_res, num_channel)
-    logits = value['predicted_lddt']['logits']
-    errors = softmax_cross_entropy(labels=lddt_ca_one_hot, logits=logits)
-
-    # Shape (num_res,)
-    mask_ca = all_atom_mask[:, residue_constants.atom_order['CA']]
-    mask_ca = mask_ca.astype(jnp.float32)
-    loss = jnp.sum(errors * mask_ca) / (jnp.sum(mask_ca) + 1e-8)
-
-    if self.config.filter_by_resolution:
-      # NMR & distillation have resolution = 0
-      loss *= ((batch['resolution'] >= self.config.min_resolution)
-               & (batch['resolution'] <= self.config.max_resolution)).astype(
-                   jnp.float32)
-
-    output = {'loss': loss}
-    return output
-
-
 class PredictedAlignedErrorHead(hk.Module):
   """Head to predict the distance errors in the backbone alignment frames.
 
@@ -1145,56 +1038,6 @@ class PredictedAlignedErrorHead(hk.Module):
         0., self.config.max_error_bin, self.config.num_bins - 1)
     return dict(logits=logits, breaks=breaks)
 
-  def loss(self, value, batch):
-    # Shape (num_res, 7)
-    predicted_affine = quat_affine.QuatAffine.from_tensor(
-        value['structure_module']['final_affines'])
-    # Shape (num_res, 7)
-    true_affine = quat_affine.QuatAffine.from_tensor(
-        batch['backbone_affine_tensor'])
-    # Shape (num_res)
-    mask = batch['backbone_affine_mask']
-    # Shape (num_res, num_res)
-    square_mask = mask[:, None] * mask[None, :]
-    num_bins = self.config.num_bins
-    # (1, num_bins - 1)
-    breaks = value['predicted_aligned_error']['breaks']
-    # (1, num_bins)
-    logits = value['predicted_aligned_error']['logits']
-
-    # Compute the squared error for each alignment.
-    def _local_frame_points(affine):
-      points = [jnp.expand_dims(x, axis=-2) for x in affine.translation]
-      return affine.invert_point(points, extra_dims=1)
-    error_dist2_xyz = [
-        jnp.square(a - b)
-        for a, b in zip(_local_frame_points(predicted_affine),
-                        _local_frame_points(true_affine))]
-    error_dist2 = sum(error_dist2_xyz)
-    # Shape (num_res, num_res)
-    # First num_res are alignment frames, second num_res are the residues.
-    error_dist2 = jax.lax.stop_gradient(error_dist2)
-
-    sq_breaks = jnp.square(breaks)
-    true_bins = jnp.sum((
-        error_dist2[..., None] > sq_breaks).astype(jnp.int32), axis=-1)
-
-    errors = softmax_cross_entropy(
-        labels=jax.nn.one_hot(true_bins, num_bins, axis=-1), logits=logits)
-
-    loss = (jnp.sum(errors * square_mask, axis=(-2, -1)) /
-            (1e-8 + jnp.sum(square_mask, axis=(-2, -1))))
-
-    if self.config.filter_by_resolution:
-      # NMR & distillation have resolution = 0
-      loss *= ((batch['resolution'] >= self.config.min_resolution)
-               & (batch['resolution'] <= self.config.max_resolution)).astype(
-                   jnp.float32)
-
-    output = {'loss': loss}
-    return output
-
-
 class ExperimentallyResolvedHead(hk.Module):
   """Predicts if an atom is experimentally resolved in a high-res structure.
 
@@ -1228,29 +1071,6 @@ class ExperimentallyResolvedHead(hk.Module):
         initializer=utils.final_init(self.global_config),
         name='logits')(representations['single'])
     return dict(logits=logits)
-
-  def loss(self, value, batch):
-    logits = value['logits']
-    assert len(logits.shape) == 2
-
-    # Does the atom appear in the amino acid?
-    atom_exists = batch['atom37_atom_exists']
-    # Is the atom resolved in the experiment? Subset of atom_exists,
-    # *except for OXT*
-    all_atom_mask = batch['all_atom_mask'].astype(jnp.float32)
-
-    xent = sigmoid_cross_entropy(labels=all_atom_mask, logits=logits)
-    loss = jnp.sum(xent * atom_exists) / (1e-8 + jnp.sum(atom_exists))
-
-    if self.config.filter_by_resolution:
-      # NMR & distillation examples have resolution = 0.
-      loss *= ((batch['resolution'] >= self.config.min_resolution)
-               & (batch['resolution'] <= self.config.max_resolution)).astype(
-                   jnp.float32)
-
-    output = {'loss': loss}
-    return output
-
 
 class TriangleMultiplication(hk.Module):
   """Triangle multiplication layer ("outgoing" or "incoming").
@@ -1378,43 +1198,6 @@ class DistogramHead(hk.Module):
                           self.config.num_bins - 1)
 
     return dict(logits=logits, bin_edges=breaks)
-
-  def loss(self, value, batch):
-    return _distogram_log_loss(value['logits'], value['bin_edges'],
-                               batch, self.config.num_bins)
-
-
-def _distogram_log_loss(logits, bin_edges, batch, num_bins):
-  """Log loss of a distogram."""
-
-  assert len(logits.shape) == 3
-  positions = batch['pseudo_beta']
-  mask = batch['pseudo_beta_mask']
-
-  assert positions.shape[-1] == 3
-
-  sq_breaks = jnp.square(bin_edges)
-
-  dist2 = jnp.sum(
-      jnp.square(
-          jnp.expand_dims(positions, axis=-2) -
-          jnp.expand_dims(positions, axis=-3)),
-      axis=-1,
-      keepdims=True)
-
-  true_bins = jnp.sum(dist2 > sq_breaks, axis=-1)
-
-  errors = softmax_cross_entropy(
-      labels=jax.nn.one_hot(true_bins, num_bins), logits=logits)
-
-  square_mask = jnp.expand_dims(mask, axis=-2) * jnp.expand_dims(mask, axis=-1)
-
-  avg_error = (
-      jnp.sum(errors * square_mask, axis=(-2, -1)) /
-      (1e-6 + jnp.sum(square_mask, axis=(-2, -1))))
-  dist2 = dist2[..., 0]
-  return dict(loss=avg_error, true_dist=jnp.sqrt(1e-6 + dist2))
-
 
 class OuterProductMean(hk.Module):
   """Computes mean outer product.
@@ -1735,7 +1518,9 @@ class EmbeddingsAndEvoformer(hk.Module):
                                           True,
                                           name='prev_msa_first_row_norm')(
                                               batch['prev_msa_first_row'])
-        msa_activations.at[0].set(prev_msa_first_row)
+        # JAX arrays are immutable: the result of ``.at[...]`` must be assigned. (It was
+        # previously discarded, so the recycled first row never fed back; upstream AF2 adds it.)
+        msa_activations = msa_activations.at[0].add(prev_msa_first_row)
 
       if 'prev_pair' in batch:
         pair_activations += hk.LayerNorm([-1],

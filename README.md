@@ -103,7 +103,115 @@ The idea of using DCA, [RoseTTAFold](https://github.com/RosettaCommons/RoseTTAFo
 
 `yunta` puts these algorithms in one place with easy installation, a command-line interface, and a Python API. It also enables interspecies co-evolutionary analysis using a built-in host-pathogen interaction mapping.
 
-## Command-line usage
+## Memory and speed
+
+**DCA.** DCA prunes residue states never seen at a site (exact), computes sequence weights and the covariance in
+tiles (the M x M identity matrix is never built), streams the alignment in row slabs (so deep alignments never hold
+the whole one-hot matrix), inverts by Cholesky (LU as a fallback) and accumulates coupling norms tile by tile. The
+straight port is kept as `_calculate_dca_reference`; `benchmarks/bench_dca.py` compares the two, and the tests check
+that they agree.
+
+For AF2 the training-only heads are off, the MSA is padded to its real depth (bucketed; same outputs, fewer compiles),
+`--subbatch-size N` trades speed for memory in attention, `--unified-memory` lets the GPU spill into
+host RAM (set before JAX starts), and `--fixed-msa-padding` restores stock padding. Compiled programs are
+cached on disk (`YUNTA_JAX_CACHE`). `--recycle-tolerance A` drives recycling from Python (the Evoformer then compiles
+once instead of twice) and stops early once the C-alpha distance matrix changes by less than A angstrom between
+passes; it is approximate, off by default, and `0` reproduces the stock result. Details: `benchmarks/af2_optimisations.md`.
+
+
+## `pair` and `coevo` (recommended interface)
+
+Pairing and prediction are separate steps. `coevo` pairs once per protein pair, so several methods
+share the pairing, and each model is loaded once per run (and released afterwards).
+
+```bash
+# Real pairing, and a negative control that keeps depth and per-species multiplicity but
+# removes every known interacting species pair
+yunta pair A.a3m --msa2 B.a3m --interspecies --pairing map      -o paired/
+yunta pair A.a3m --msa2 B.a3m --interspecies --pairing rewired  --seed 1 -o paired/
+
+# Predict from exactly that saved pairing (the .json sidecar written by `pair` holds the chain
+# boundary, pairing method, seed and diagnostics) ...
+yunta coevo paired/A-B.rewired.a3m --paired -m dca af2 of3 -o results/
+
+# ... or pair and predict in one go; the control seed is recorded in the metrics
+yunta coevo A.a3m --msa2 B.a3m --pairing rewired -m dca af2 of3 --structures models/ -o results/
+```
+
+**Controls.** `--pairing`: `map` (default), `rewired` (degree-preserving rewiring of the species-pair
+graph, Maslov & Sneppen 2002, known pairs forbidden), `random-species` (pairs drawn from outside the
+map), `random-rows` (rows matched at random, known species pairs rejected) and `permute-partners`
+(the real rows and gap patterns, with the partner chain's rows permuted so no known pair survives; it
+keeps composition and per-chain gaps, so it isolates *who is paired with whom*). Each control is
+checked for its invariants twice: as generated, and again on the alignment that is actually scored
+(after the gap filter), against the real pairing put through the same filter: depth, species pairs
+retained from the real pairing, per-species multiplicity (`rewired`) and per-chain row composition
+(`permute-partners`) are re-measured on the final alignments. `permute-partners` gap-filters the *real*
+rows first and permutes exactly the survivors, so its final A and B rows are the real ones; the permuted
+rows are never refiltered, so their joint gap fraction can differ from the real rows'. A control with surplus
+rows is trimmed (seeded) to the real final depth; one that falls short is invalid. Invalid controls are
+an **error by default** (in batches the pair is skipped and listed in `CoevoPredictor.rejected`);
+`--allow-invalid-controls` downgrades that to `pairing_valid=False`. The rejection rate and its reasons are logged (`[INFO] Negative control ...: n/N pairs rejected`, with a
+warning when most are rejected): check it before comparing real and control scores, because rejected pairs are
+missing from the control set. The metrics carry `pairing_*`
+columns, including final depth, Neff and mean gap for the control and its reference. Score the real
+pairing against several control replicates (different `--seed`s). A score that does not exceed the control
+distribution is insufficient evidence for pairing-specific coevolution: weak coupling, model sensitivity,
+stochastic variation, too few effective sequences or poor predictions could each explain it. A score
+that does exceed it is not, by itself, evidence of a physical interaction, because shared phylogeny can
+also generate correlated variation between families (see `yunta/structs/pairing.py`).
+
+**Scores.** AF2 and OpenFold3 report per-chain/interface pLDDT, pDockQ, pDockQ2, pTM, ipTM, actifpTM, ipSAE, LIS
+and mean inter-chain PAE. Every score is computed by the same code (`yunta/interactions/confidence.py`) from one
+canonical record that each backend hands over (pLDDT on a 0-100 scale, PAE bin probabilities, contact probability);
+unit mistakes (a 0-1 pLDDT, logits instead of probabilities, PAE not in Angstrom) raise instead of skewing a score.
+So `iptm` means the same thing whichever model produced it. pTM and ipTM are recomputed from the PAE bin
+probabilities rather than taken from the model; the models' own values are kept for cross-checking
+(`ptm_af2`; `ptm_model` and `iptm_model` for OpenFold3). OpenFold3 computes the PAE probabilities and contact
+probabilities but does not save them, so yunta switches on the settings that keep them and captures them from its output
+writer; if that capture fails, pTM, ipTM and actifpTM are `NaN` (a warning says so) and the rest still work.
+pDockQ2, ipSAE and LIS follow the original papers and Dunbrack's `ipsae.py`; pTM/ipTM are tested against the AlphaFold reference.
+
+**Whole vs blockwise.** Chunking is opt-in: by default (`chunksize=None`, no `--chunksize`) the whole complex
+is modelled in one call, and a warning is printed if the estimated memory exceeds what is free. With
+`--chunksize N`, an alignment longer than `N` is split into blocks that are modelled independently, and the metrics say `score_mode=blockwise`. Blockwise scores are
+approximations built from independent sub-models, not values for any one physical complex; they are
+not comparable with `score_mode=whole`. Structure backends only run inter-chain blocks and write no
+PDB when chunked; pTM, ipTM and actifpTM need a single model and are `NaN` when chunked. For DCA the
+approximation was measured on real yeast MSAs (`benchmarks/chunked_vs_full_dca.py`): Spearman
+0.82-0.89 to the unchunked matrix, 42-66% overlap in the top 50 residue pairs, and chunked scores
+about 1.8-3.6x more spread out, so do not mix chunked and unchunked DCA scores.
+
+See "Memory and speed" above for the memory options that usually make chunking unnecessary.
+
+**OpenFold3 status.** The OpenFold3 backend is tested against a stand-in model and the 0.5.1 API only; it has not yet
+been run on a GPU with real weights (the gated smoke test `test/test_of3_gpu_smoke.py`, enabled with
+`YUNTA_OF3_SMOKE=1`, is pending). It stays behind its optional dependency until that has run.
+
+**Structures.** `--structures DIR` writes a PDB for AF2 and OpenFold3 (also `structure=True` in Python,
+returned as `metrics.structure`). Only for whole-complex calls: never for a chunked complex.
+
+### Parallel jobs and weight downloads
+
+Weight downloads (AlphaFold2 parameters, OpenFold3 checkpoint) are single-flight: when many
+processes start at once on a shared filesystem, one downloads while the others wait on a
+[`filelock`](https://py-filelock.readthedocs.io/) next to the target file, then reuse the result.
+Files appear by atomic rename, so no process can load a half-written file, and a killed
+download releases its lock automatically. Set `YUNTA_DOWNLOAD_TIMEOUT` (seconds) to stop
+waiting eventually, and `YUNTA_LOCK_TYPE=soft` on filesystems without `flock` support (a soft
+lock left by a crashed job must then be deleted by hand). Set `YUNTA_JAX_CACHE=/shared/dir` to
+share AlphaFold2's compiled XLA programs between workers. RoseTTAFold2t weights are fetched by
+`rf2t-micro` itself and are not covered by this lock.
+
+OpenFold3 (`pip install "yunta[of3]"`) downloads its default weights on first use to
+`$OPENFOLD_CACHE` or `~/.openfold3`; use `--of3-checkpoint` for your own. Only the paired MSA is
+given to the model (no MSA server, no templates), so any signal comes from the pairing. The query
+schema and runner arguments are checked against the real OpenFold3 package in
+`test/test_of3_real_api.py`; the model itself has not been run end-to-end here.
+
+The older `dca-*`, `rf2t-*` and `af2-*` commands remain for compatibility.
+
+## Command-line usage (original commands)
 
 ```bash
 $ yunta --help

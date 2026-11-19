@@ -27,17 +27,18 @@ def _pdockq(
     >>> _pdockq(.9, 100)
     0.018284286329741297
     """
-    x = avg_interface_plddt * np.log10(n_interface_contacts)
-    return .724 / (1 + np.exp(-.052 * (x - 152.611))) + .018
+    from ..confidence import pdockq
+    return pdockq(avg_interface_plddt, n_interface_contacts)
 
 
 def get_contact_matrix(unrelaxed_protein) -> Tuple[ndarray, ...]:
     from .src_speedppi.alphafold import protein
-    #Get the pdb and Cβ coords
-    _, cβ_coords = protein.to_pdb(unrelaxed_protein)
+    cβ_coords = protein.cb_coordinates(unrelaxed_protein)  # no PDB text needed
     contact_dists = cdist(cβ_coords, cβ_coords)
     assert contact_dists.shape[0] == contact_dists.shape[1]
-    inv_contact_dists = 1. / contact_dists
+    with np.errstate(divide="ignore"):
+        inv_contact_dists = 1. / contact_dists
+    inv_contact_dists[np.isinf(inv_contact_dists)] = 0.  # self-distance: was inf on the diagonal
     return inv_contact_dists, contact_dists
 
 

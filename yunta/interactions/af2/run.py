@@ -1,5 +1,5 @@
 """."""
-from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple, Iterable, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple, Iterable, Mapping, Optional, Union
 import os
 import random
 import sys
@@ -14,7 +14,8 @@ else:
     ndarray, ArrayLike = Any, Any
 
 from .modelling import make_model_runner
-from .scoring import _post_score_ppi, get_contact_matrix
+from ..chunking import Block
+from .scoring import get_contact_matrix
 from ...io import save_design
 from ...structs.msa import PairedMSA
 
@@ -51,12 +52,15 @@ def model_protein_interaction(
     """
 
     if seed is None:
-        seed = random.randrange(sys.maxsize)
+        seed = random.randrange(2**31 - 1)
     if model is None:
         from .modelling import make_model_runner
         model = make_model_runner(**(model_kwargs or {}))
 
     feature_dict = _get_af2_features(msa_seqs, chain_a_length, _id)
+    if getattr(model, "adaptive_msa", False):  # pad to this alignment's depth, not to 512/5120 rows
+        from .modelling import adapt_msa_padding
+        adapt_msa_padding(model.config, feature_dict["msa"].shape[0], limits=getattr(model, "msa_limits", None))
     print_err(f"[INFO] Running AF2 on pair {feature_dict['ID']}...")
     # Run the model - on GPU
     t0 = time()
@@ -95,12 +99,44 @@ def get_unrelaxed_protein(
         b_factors=plddt_b_factors,
     )
 
+def _compact(prediction_result: Mapping[str, Any]) -> Dict[str, Any]:
+    """Reduce the raw AF2 result to the canonical record (see ``confidence.compact_prediction``).
+
+    The raw result holds ``(L, L, 64)`` PAE and distogram probabilities per block; scoring
+    needs only ``(L, L)`` matrices, so those are reduced here.
+    """
+    import numpy as np
+    from .. import confidence
+    probs = prediction_result.get("aligned_confidence_probs")
+    distogram = prediction_result.get("distogram")
+    contact_prob = None
+    if distogram is not None:
+        from scipy.special import softmax
+        contact_prob = _full_contact_prob(
+            softmax(np.asarray(distogram["logits"]), axis=-1), np.asarray(distogram["bin_edges"]),
+        )
+    return confidence.compact_prediction(
+        prediction_result["plddt"],
+        pae_probs=None if probs is None else np.asarray(probs),
+        contact_prob=contact_prob,
+        ptm=float(prediction_result["ptm"]) if "ptm" in prediction_result else None,
+    )
+
+
+def _full_contact_prob(probs, bin_edges, cutoff: float = 8.):
+    """``P(d < cutoff)`` for every residue pair, ``(L, L)``."""
+    import numpy as np
+    n = int((bin_edges <= cutoff).sum())
+    return probs[..., :n].sum(axis=-1).astype(np.float32)
+
+
 def af2(
     paired_msa: ArrayLike,
     chain_a_length: int,
     _id: str,
     model: Optional[Callable] = None,
-    seed: Optional[int] = None
+    seed: Optional[int] = None,
+    return_structure: bool = False,
 ) -> ndarray:
     
     feature_dict, processed_feature_dict, prediction_result = model_protein_interaction(
@@ -117,74 +153,38 @@ def af2(
     inv_contact_dists, contact_dists = get_contact_matrix(
         unrelaxed_protein,
     )
-    return inv_contact_dists, contact_dists, prediction_result
+    compact = _compact(prediction_result)
+    if return_structure:  # PDB text, pLDDT in the B-factor column, chains split at the break
+        from .src_speedppi.alphafold import protein
+        from ...io import assign_chains
+        pdb, _ = protein.to_pdb(unrelaxed_protein)
+        compact["structure"] = assign_chains(pdb, chain_a_length)
+    return inv_contact_dists, contact_dists, compact
 
 
 def post_af2(
     paired_msa: PairedMSA,
-    results: Dict[Tuple, Any]
-) -> ndarray:
-    import numpy as np
-    if len(results) == 1:
-        (i0, j0, n, m), (contact_block, plddt_block) = next(iter(results.items()))
-        contact_dist = contact_block
-        plddt = plddt_block["plddt"]
-        ptm = plddt_block.get("ptm")
-    else:
-        n_msa_columns = paired_msa.seq_length
-        contact_dist = np.zeros(
-            (n_msa_columns, n_msa_columns), 
-            dtype=np.float32,
-        )
-        plddt = np.zeros(
-            (n_msa_columns,), 
-            dtype=np.float32,
-        )
-        for (i0, j0, n, m), (contact_block, plddt_block) in results.items():
-            si, sj = slice(i0, i0 + n), slice(j0, j0 + m)
-            plddt_block = plddt_block["plddt"]
-            if i0 == j0:
-                contact_dist[si, si] = contact_block
-                plddt[si] = plddt_block[:n]
-            else:
-                contact_dist[si, sj] = contact_block[:n, n:]
-                contact_dist[sj, si] = contact_block[n:, :n]
-                plddt[sj] = plddt_block[n:]
-        ptm = None
-    contact_dist_interaction = contact_dist[:paired_msa.chain_a_length, paired_msa.chain_a_length:]
-    return _post_score_ppi(
-        contact_dist_interaction,
-        plddt,
-        ptm,
-        chain_a_length=paired_msa.chain_a_length,
-        contact_radius=8.,
+    results: List[Tuple[Block, tuple]],
+    contact_radius: float = 8.,
+    pae_cutoff: float = 10.,
+    **kwargs
+) -> Dict[str, Any]:
+    """Score the interface from the blocks' Cβ distances, pLDDT and (if whole) PAE.
+
+    ``results`` is ``[(block, (contact_dists, compact_prediction)), ...]``. Each block's
+    pLDDT is averaged over every block that contains the residue (not last-write-wins),
+    and unseen residue pairs are ``inf`` apart, so they can never count as contacts.
+    pTM, ipTM and actifpTM need one model's PAE/distogram probabilities, so they are only defined
+    for a whole-complex call (NaN otherwise). The PAE-based scores (ipSAE, pDockQ2, LIS, mean
+    inter-chain PAE) are computed from the assembled PAE when chunked, as **blockwise
+    approximations**; the metrics' ``score_mode`` column says which case applies. Contact and
+    pLDDT scores are likewise blockwise when chunked.
+    """
+    from .. import confidence
+    scores, one = confidence.score_blocks(
+        paired_msa, results, contact_radius=contact_radius, pae_cutoff=pae_cutoff,
     )
-
-
-# TODO: Wire this back in one day
-# Needs function parameters to be updated.
-def save_pdb(
-    paired_msa: PairedMSA,
-    model: Optional[Callable] = None,
-    seed: Optional[int] = None,
-    output_dir: os.PathLike = "."
-):
-    from .src_speedppi.alphafold import protein
-    feature_dict, processed_feature_dict, prediction_result = model_protein_interaction(
-        msa_seqs=paired_msa,
-        chain_a_length=paired_msa.chain_a_length,
-        _id=paired_msa.name,
-        model=model,
-        seed=seed,
-    )
-    unrelaxed_protein = get_unrelaxed_protein(
-        processed_feature_dict, 
-        prediction_result,
-    )
-    #Save if pDockQ > t
-    filename = os.path.join(output_dir, f"{feature_dict['ID']}.pdb")
-    print_err(f"[INFO] Saving {feature_dict['ID']} as {filename}.")
-    pdb, _ = protein.to_pdb(unrelaxed_protein)
-    return save_design(pdb, filename, paired_msa.chain_a_length)
-
-
+    scores["ptm_af2"] = one.get("ptm")  # AF2's own pTM; "ptm" is recomputed by the shared code
+    if "structure" in one:
+        scores["structure"] = one["structure"]
+    return scores
