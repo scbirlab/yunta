@@ -111,6 +111,14 @@ the whole one-hot matrix), inverts by Cholesky (LU as a fallback) and accumulate
 straight port is kept as `_calculate_dca_reference`; `benchmarks/bench_dca.py` compares the two, and the tests check
 that they agree.
 
+For AF2 the training-only heads are off, the MSA is padded to its real depth (bucketed; same outputs, fewer compiles),
+`--subbatch-size N` trades speed for memory in attention, `--unified-memory` lets the GPU spill into
+host RAM (set before JAX starts), and `--fixed-msa-padding` restores stock padding. Compiled programs are
+cached on disk (`YUNTA_JAX_CACHE`). `--recycle-tolerance A` drives recycling from Python (the Evoformer then compiles
+once instead of twice) and stops early once the C-alpha distance matrix changes by less than A angstrom between
+passes; it is approximate, off by default, and `0` reproduces the stock result. Details: `benchmarks/af2_optimisations.md`.
+
+
 ## Command-line usage
 
 ```bash

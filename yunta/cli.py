@@ -109,6 +109,10 @@ def _af2_single(args: Namespace) -> None:
         enforce_ref_match=args.strict_match,
         max_recycles=args.recycles,
         param_dir=args.params,
+        subbatch_size=args.subbatch_size,
+        unified_memory=args.unified_memory,
+        adaptive_msa=not args.fixed_msa_padding,
+        recycle_tolerance=args.recycle_tolerance,
     )
 
 
@@ -122,6 +126,10 @@ def _af2_many_vs_many(args: Namespace) -> None:
         enforce_ref_match=args.strict_match,
         max_recycles=args.recycles,
         param_dir=args.params,
+        subbatch_size=args.subbatch_size,
+        unified_memory=args.unified_memory,
+        adaptive_msa=not args.fixed_msa_padding,
+        recycle_tolerance=args.recycle_tolerance,
     )
 
 
@@ -188,6 +196,20 @@ def main() -> None:
                        default=10,
                        help='Maximum number of recyles through the model.')
 
+    subbatch_size = CLIOption('--subbatch-size', type=int, default=None,
+                              help='AF2: attention/outer-product sub-batch size (stock 4). Smaller uses less memory, '
+                                   'slower.')
+    unified_memory = CLIOption('--unified-memory', action='store_true',
+                               help='AF2 on GPU: let device memory spill to host RAM so larger complexes run '
+                                    '(slowly) instead of failing.')
+    recycle_tolerance = CLIOption('--recycle-tolerance', type=float, default=None,
+                                  help='AF2: stop recycling early once the RMS change of the C-alpha distance matrix '
+                                       'between two passes is below this many Angstrom (approximate; 0 runs every '
+                                       'recycle and gives the stock result). Default: always run all recycles.')
+    fixed_msa_padding = CLIOption('--fixed-msa-padding', action='store_true',
+                                  help='AF2: pad the MSA to the stock 512 clusters / 5120 extra rows instead of the '
+                                       'alignment\'s real depth (same results, more memory and time).')
+
     base_opts = [inputs_list2, list_file, interspecies, strict_match, output_file, plot]
 
     rf2t_single = CLICommand(
@@ -212,13 +234,13 @@ def main() -> None:
         'af2-single', 
         description='Model one protein-protein interaction.',
         main=_af2_single,
-        options=[inputs] + base_opts + [params, recycles],
+        options=[inputs] + base_opts + [params, recycles, subbatch_size, unified_memory, recycle_tolerance, fixed_msa_padding],
     )
     af2_many = CLICommand(
         'af2-many', 
         description='Model all interactions between two sets of proteins, or all pairs in one set of proteins.',
         main=_af2_many_vs_many,
-        options=[inputs_list] + base_opts + [params, recycles],
+        options=[inputs_list] + base_opts + [params, recycles, subbatch_size, unified_memory, recycle_tolerance, fixed_msa_padding],
     )
 
     app = CLIApp(

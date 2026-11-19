@@ -33,8 +33,7 @@ def _pdockq(
 
 def get_contact_matrix(unrelaxed_protein) -> Tuple[ndarray, ...]:
     from .src_speedppi.alphafold import protein
-    #Get the pdb and Cβ coords
-    _, cβ_coords = protein.to_pdb(unrelaxed_protein)
+    cβ_coords = protein.cb_coordinates(unrelaxed_protein)  # no PDB text needed
     contact_dists = cdist(cβ_coords, cβ_coords)
     assert contact_dists.shape[0] == contact_dists.shape[1]
     with np.errstate(divide="ignore"):

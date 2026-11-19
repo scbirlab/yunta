@@ -203,6 +203,10 @@ def model_one_vs_many(
     seed: Optional[int] = None,
     max_recycles: int = 10,
     param_dir: Optional[str] = None,
+    subbatch_size: Optional[int] = None,
+    unified_memory: bool = False,
+    adaptive_msa: bool = True,
+    recycle_tolerance: Optional[float] = None,
     **kwargs
 ) -> List[AF2Metrics]:
     return _screen_one_vs_many(
@@ -213,7 +217,11 @@ def model_one_vs_many(
         interaction_map=interaction_map,
         enforce_ref_match=enforce_ref_match,
         seed=seed,
-        model_kwargs={"max_recycles": max_recycles, "param_dir": param_dir},
+        model_kwargs={
+            "max_recycles": max_recycles, "param_dir": param_dir,
+            "subbatch_size": subbatch_size, "unified_memory": unified_memory,
+            "adaptive_msa": adaptive_msa, "recycle_tolerance": recycle_tolerance,
+        },
         **kwargs
     )
     
@@ -227,6 +235,10 @@ def model_many_vs_many(
     max_recycles: int = 10,
     param_dir: Optional[str] = None,
     seed: Optional[int] = None,
+    subbatch_size: Optional[int] = None,
+    unified_memory: bool = False,
+    adaptive_msa: bool = True,
+    recycle_tolerance: Optional[float] = None,
     **kwargs
 ) -> List[AF2Metrics]:
     return _screen_many_vs_many(
@@ -234,7 +246,11 @@ def model_many_vs_many(
         msa_files1=msa_files1,
         msa_files2=msa_files2,
         runner=AF2Runner,
-        model_kwargs={"max_recycles": max_recycles, "param_dir": param_dir},
+        model_kwargs={
+            "max_recycles": max_recycles, "param_dir": param_dir,
+            "subbatch_size": subbatch_size, "unified_memory": unified_memory,
+            "adaptive_msa": adaptive_msa, "recycle_tolerance": recycle_tolerance,
+        },
         max_gap_fraction=max_gap_fraction,
         interaction_map=interaction_map,
         enforce_ref_match=enforce_ref_match,

@@ -57,6 +57,9 @@ def model_protein_interaction(
         model = make_model_runner(**(model_kwargs or {}))
 
     feature_dict = _get_af2_features(msa_seqs, chain_a_length, _id)
+    if getattr(model, "adaptive_msa", False):  # pad to this alignment's depth, not to 512/5120 rows
+        from .modelling import adapt_msa_padding
+        adapt_msa_padding(model.config, feature_dict["msa"].shape[0], limits=getattr(model, "msa_limits", None))
     print_err(f"[INFO] Running AF2 on pair {feature_dict['ID']}...")
     # Run the model - on GPU
     t0 = time()

@@ -15,9 +15,7 @@
 """Protein data type."""
 from typing import Any, Mapping, Optional
 import dataclasses
-import io
 
-from Bio.PDB import PDBParser
 import numpy as np
 
 from . import residue_constants
@@ -51,79 +49,19 @@ class Protein:
   b_factors: np.ndarray  # [num_res, num_atom_type]
 
 
-def from_pdb_string(pdb_str: str, chain_id: Optional[str] = None) -> Protein:
-  """Takes a PDB string and constructs a Protein object.
+def cb_coordinates(prot: Protein) -> np.ndarray:
+  """Cβ coordinates (Cα for glycine), one per residue that has them, ``(n, 3)``.
 
-  WARNING: All non-standard residue types will be converted into UNK. All
-    non-standard atoms will be ignored.
-
-  Args:
-    pdb_str: The contents of the pdb file
-    chain_id: If None, then the pdb file must contain a single chain (which
-      will be parsed). If chain_id is specified (e.g. A), then only that chain
-      is parsed.
-
-  Returns:
-    A new `Protein` parsed from the pdb contents.
+  Vectorised equivalent of collecting them while writing PDB text, so callers that
+  only need the coordinates do not have to build the PDB string.
   """
-  pdb_fh = io.StringIO(pdb_str)
-  parser = PDBParser(QUIET=True)
-  structure = parser.get_structure('none', pdb_fh)
-  models = list(structure.get_models())
-  if len(models) != 1:
-    raise ValueError(
-        f'Only single model PDBs are supported. Found {len(models)} models.')
-  model = models[0]
-
-  if chain_id is not None:
-    chain = model[chain_id]
-  else:
-    chains = list(model.get_chains())
-    if len(chains) != 1:
-      raise ValueError(
-          'Only single chain PDBs are supported when chain_id not specified. '
-          f'Found {len(chains)} chains.')
-    else:
-      chain = chains[0]
-
-  atom_positions = []
-  aatype = []
-  atom_mask = []
-  residue_index = []
-  b_factors = []
-
-  for res in chain:
-    if res.id[2] != ' ':
-      raise ValueError(
-          f'PDB contains an insertion code at chain {chain.id} and residue '
-          f'index {res.id[1]}. These are not supported.')
-    res_shortname = residue_constants.restype_3to1.get(res.resname, 'X')
-    restype_idx = residue_constants.restype_order.get(
-        res_shortname, residue_constants.restype_num)
-    pos = np.zeros((residue_constants.atom_type_num, 3))
-    mask = np.zeros((residue_constants.atom_type_num,))
-    res_b_factors = np.zeros((residue_constants.atom_type_num,))
-    for atom in res:
-      if atom.name not in residue_constants.atom_types:
-        continue
-      pos[residue_constants.atom_order[atom.name]] = atom.coord
-      mask[residue_constants.atom_order[atom.name]] = 1.
-      res_b_factors[residue_constants.atom_order[atom.name]] = atom.bfactor
-    if np.sum(mask) < 0.5:
-      # If no known atom positions are reported for the residue then skip it.
-      continue
-    aatype.append(restype_idx)
-    atom_positions.append(pos)
-    atom_mask.append(mask)
-    residue_index.append(res.id[1])
-    b_factors.append(res_b_factors)
-
-  return Protein(
-      atom_positions=np.array(atom_positions),
-      atom_mask=np.array(atom_mask),
-      aatype=np.array(aatype),
-      residue_index=np.array(residue_index),
-      b_factors=np.array(b_factors))
+  atom_types = residue_constants.atom_types
+  ca, cb = atom_types.index('CA'), atom_types.index('CB')
+  gly = prot.aatype == residue_constants.restype_order['G']
+  keep = np.stack([gly & (prot.atom_mask[:, ca] >= 0.5),
+                   prot.atom_mask[:, cb] >= 0.5], axis=1)  # CA precedes CB in atom order
+  pos = np.stack([prot.atom_positions[:, ca], prot.atom_positions[:, cb]], axis=1)
+  return pos[keep].reshape(-1, 3)
 
 
 def to_pdb(prot: Protein) -> str:
@@ -153,7 +91,6 @@ def to_pdb(prot: Protein) -> str:
   pdb_lines.append('MODEL     1')
   atom_index = 1
   chain_id = 'A'
-  CB_coords = []
   # Add all atom sites.
   for i in range(aatype.shape[0]):
     res_name_3 = res_1to3(aatype[i])
@@ -162,8 +99,6 @@ def to_pdb(prot: Protein) -> str:
       if mask < 0.5:
         continue
 
-      if atom_name == 'CB' or (atom_name=='CA' and res_name_3=='GLY'):
-          CB_coords.append(pos)
       record_type = 'ATOM'
       name = atom_name if len(atom_name) == 4 else f' {atom_name}'
       alt_loc = ''
@@ -191,23 +126,7 @@ def to_pdb(prot: Protein) -> str:
 
   pdb_lines.append('END')
   pdb_lines.append('')
-  return '\n'.join(pdb_lines), np.array(CB_coords)
-
-
-def ideal_atom_mask(prot: Protein) -> np.ndarray:
-  """Computes an ideal atom mask.
-
-  `Protein.atom_mask` typically is defined according to the atoms that are
-  reported in the PDB. This function computes a mask according to heavy atoms
-  that should be present in the given sequence of amino acids.
-
-  Args:
-    prot: `Protein` whose fields are `numpy.ndarray` objects.
-
-  Returns:
-    An ideal atom mask.
-  """
-  return residue_constants.STANDARD_ATOM_MASK[prot.aatype]
+  return '\n'.join(pdb_lines), cb_coordinates(prot)
 
 
 def from_prediction(features: FeatureDict, result: ModelOutput,

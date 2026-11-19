@@ -28,7 +28,6 @@ classifiers = [
 
 dependencies = [
   "bioino",
-  "biopython",
   "carabiner-tools[mpl,pd]>=0.0.5.post3",
   "openpyxl==3.1.0",
   "requests",
